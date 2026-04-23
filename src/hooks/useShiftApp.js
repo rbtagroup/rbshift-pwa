@@ -23,19 +23,6 @@ import {
 } from '../defaults'
 import { useFlash } from './useFlash'
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
-
-function withTimeout(promise, message) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      window.setTimeout(() => {
-        reject(new Error(message))
-      }, AUTH_BOOTSTRAP_TIMEOUT_MS)
-    }),
-  ])
-}
-
 export function useShiftApp() {
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
@@ -77,10 +64,7 @@ export function useShiftApp() {
     let mounted = true
     const runAuthBootstrap = async () => {
       try {
-        const sessionResult = await withTimeout(
-          supabase.auth.getSession(),
-          'Inicializace přihlášení trvá příliš dlouho. Zkouším obnovit relaci...'
-        )
+        const sessionResult = await supabase.auth.getSession()
 
         if (!mounted) return
 
@@ -100,32 +84,9 @@ export function useShiftApp() {
         setLoading(false)
       } catch (bootstrapError) {
         if (!mounted) return
-        try {
-          const { data: userData, error: userError } = await withTimeout(
-            supabase.auth.getUser(),
-            'Inicializace přihlášení trvá příliš dlouho. Zkontroluj připojení k Supabase a environment proměnné.'
-          )
-
-          if (!mounted) return
-
-          if (userError) {
-            throw userError
-          }
-
-          if (userData?.user?.id) {
-            await hydrateSupabaseUser(userData.user.id)
-            return
-          }
-
-          setProfile(null)
-          setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
-          setLoading(false)
-        } catch (fallbackError) {
-          if (!mounted) return
-          setProfile(null)
-          setError(fallbackError.message || bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
-          setLoading(false)
-        }
+        setProfile(null)
+        setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
+        setLoading(false)
       }
     }
 
