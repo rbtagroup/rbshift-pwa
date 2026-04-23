@@ -590,14 +590,32 @@ export function useShiftApp() {
     }
 
     setBusy(true)
-    const { error: authError } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword })
-    if (authError) {
-      setFlash('error', authError.message)
+    setError('')
+
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      })
+
+      if (authError) {
+        setFlash('error', authError.message)
+        setBusy(false)
+        return
+      }
+
+      setSession(data.session ?? null)
+
+      if (data.session?.user?.id) {
+        await hydrateSupabaseUser(data.session.user.id)
+      }
+
+      setFlash('success', 'Přihlášení proběhlo úspěšně.')
+    } catch (loginError) {
+      setFlash('error', loginError.message || 'Přihlášení selhalo.')
+    } finally {
       setBusy(false)
-      return
     }
-    setFlash('success', 'Přihlášení proběhlo úspěšně.')
-    setBusy(false)
   }
 
   async function handleLogout() {
