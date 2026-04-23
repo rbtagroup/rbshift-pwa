@@ -126,7 +126,6 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <div className="eyebrow">Plánovač směn pro řidiče a dispečink</div>
           <h1>RBSHIFT</h1>
         </div>
         <div className="topbar-actions">
@@ -140,7 +139,7 @@ function App() {
         <aside className="sidebar">
           <div className="profile-card">
             <strong>{profile.full_name}</strong>
-            <span>{profile.email}</span>
+            <span className="profile-email">{profile.email}</span>
             <span className="muted">{ROLE_LABEL[profile.role]}</span>
           </div>
 
@@ -151,11 +150,6 @@ function App() {
               </button>
             ))}
           </nav>
-
-          <div className="sidebar-note">
-            <strong>PWA poznámka</strong>
-            <p>Na mobilu si aplikaci přidej na plochu přes Sdílet → Přidat na plochu.</p>
-          </div>
         </aside>
 
         <main className="content">

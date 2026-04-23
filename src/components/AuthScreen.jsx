@@ -19,12 +19,7 @@ export function AuthScreen({
         <div className="brand-block">
           <div className="brand-icon">RB</div>
           <div>
-            <div className="eyebrow">PWA plánovač směn</div>
             <h1>RBSHIFT</h1>
-            <p>
-              Řidičská a dispečerská aplikace pro směny. Funguje jako demo hned po otevření a po doplnění
-              `.env` může běžet nad Supabase.
-            </p>
           </div>
         </div>
 
@@ -58,7 +53,6 @@ export function AuthScreen({
 
         <div className="notice-row">
           <StatusPill tone={mode === 'demo' ? 'warning' : 'success'}>{mode === 'demo' ? 'Demo režim bez Supabase' : 'Supabase připojeno'}</StatusPill>
-          <span className="muted">V ostrém provozu použij Vercel + Supabase Auth + RLS.</span>
         </div>
 
         {error && <div className="banner error">{error}</div>}
