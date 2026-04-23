@@ -27,6 +27,7 @@ function App() {
     handleExportShifts,
     handleLogin,
     handleLogout,
+    handleNotificationAction,
     handleSaveAvailability,
     handleSaveDriver,
     handleSaveProfile,
@@ -41,6 +42,7 @@ function App() {
     loginPassword,
     message,
     mode,
+    notifications,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -65,6 +67,7 @@ function App() {
     thisWeekShifts,
     todayShifts,
     upcomingShift,
+    unreadNotificationCount,
     vehicleForm,
     vehicles,
     vehiclesMap,
@@ -75,11 +78,13 @@ function App() {
   const nav = profile?.role === 'driver'
     ? [
         { id: 'today', label: 'Dnes' },
+        { id: 'notifications', label: `Notifikace${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
         { id: 'my-shifts', label: 'Moje směny' },
         { id: 'availability', label: 'Dostupnost' },
       ]
     : [
         { id: 'dashboard', label: 'Dashboard' },
+        { id: 'notifications', label: `Notifikace${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
         { id: 'shifts', label: 'Směny' },
         { id: 'problems', label: 'Problémy' },
         { id: 'users', label: 'Uživatelé' },
@@ -156,6 +161,8 @@ function App() {
               activeTab={activeTab}
               currentDriver={currentDriver}
               dataLoading={dataLoading}
+              notifications={notifications}
+              onNotificationAction={handleNotificationAction}
               upcomingShift={upcomingShift}
               visibleShifts={visibleShifts}
               availability={availability}
@@ -173,6 +180,8 @@ function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               shifts={enrichedShifts}
+              notifications={notifications}
+              onNotificationAction={handleNotificationAction}
               todayShifts={todayShifts}
               problems={problems}
               stats={stats}

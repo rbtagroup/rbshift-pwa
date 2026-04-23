@@ -245,6 +245,100 @@ export function useShiftApp() {
     ]
   }, [drivers, profiles, shifts.length, vehicles])
 
+  const notifications = useMemo(() => {
+    const now = Date.now()
+
+    if (!profile) return []
+
+    if (profile.role === 'driver') {
+      const items = []
+
+      if (!currentDriver) {
+        items.push({
+          id: 'driver-profile-missing',
+          tone: 'danger',
+          title: 'Chybí řidičský záznam',
+          description: 'K tomuto účtu zatím není napojený řidičský profil. Bez něj neuvidíš svoje směny.',
+          actionLabel: 'Otevřít směny',
+          targetTab: 'my-shifts',
+        })
+      }
+
+      visibleShifts
+        .filter((shift) => new Date(shift.end_at).getTime() >= now)
+        .slice(0, 6)
+        .forEach((shift) => {
+          const startsInMs = new Date(shift.start_at).getTime() - now
+
+          if (shift.driver_response === 'pending') {
+            items.push({
+              id: `shift-pending-${shift.id}`,
+              tone: 'warning',
+              title: 'Směna čeká na potvrzení',
+              description: `${formatDateTime(shift.start_at)} · ${shift.vehicle?.plate ?? 'bez auta'} · ${shift.note || 'Otevři detail a potvrď nebo odmítni ji.'}`,
+              actionLabel: 'Otevřít dnešek',
+              targetTab: 'today',
+            })
+          } else if (startsInMs > 0 && startsInMs <= 24 * 3600000) {
+            items.push({
+              id: `shift-soon-${shift.id}`,
+              tone: 'info',
+              title: 'Blíží se tvoje směna',
+              description: `${formatDateTime(shift.start_at)} · ${shift.vehicle?.plate ?? 'bez auta'}`,
+              actionLabel: 'Moje směny',
+              targetTab: 'my-shifts',
+            })
+          }
+        })
+
+      return items
+    }
+
+    const items = []
+
+    problems.slice(0, 6).forEach((shift) => {
+      items.push({
+        id: `problem-${shift.id}`,
+        tone: shift.status === 'replacement_needed' || shift.driver_response === 'declined' ? 'danger' : 'warning',
+        title: shift.status === 'replacement_needed' || shift.driver_response === 'declined' ? 'Směna potřebuje záskok' : 'Směna čeká na potvrzení',
+        description: `${formatDateTime(shift.start_at)} · ${shift.driver?.display_name ?? 'Bez řidiče'} · ${shift.vehicle?.plate ?? 'Bez auta'}`,
+        actionLabel: 'Otevřít směnu',
+        shiftId: shift.id,
+      })
+    })
+
+    vehicles
+      .filter((vehicle) => vehicle.status === 'service')
+      .slice(0, 3)
+      .forEach((vehicle) => {
+        items.push({
+          id: `vehicle-service-${vehicle.id}`,
+          tone: 'info',
+          title: 'Vozidlo je v servisu',
+          description: `${vehicle.name} · ${vehicle.plate}${vehicle.service_to ? ` do ${formatDateTime(vehicle.service_to)}` : ''}`,
+          actionLabel: 'Auta',
+          targetTab: 'vehicles',
+        })
+      })
+
+    onboardingItems
+      .filter((item) => !item.done)
+      .forEach((item) => {
+        items.push({
+          id: `onboarding-${item.id}`,
+          tone: 'warning',
+          title: 'Chybí část nastavení',
+          description: item.label,
+          actionLabel: 'Dashboard',
+          targetTab: 'dashboard',
+        })
+      })
+
+    return items
+  }, [currentDriver, onboardingItems, problems, profile, vehicles, visibleShifts])
+
+  const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length || notifications.length
+
   async function hydrateSupabaseUser(userId) {
     if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
       return hydrationRef.current.promise
@@ -270,7 +364,7 @@ export function useShiftApp() {
 
         setProfile(userProfile)
         setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
-        void fetchSupabaseData()
+        void fetchSupabaseData(userProfile)
         return true
       } catch (profileLoadError) {
         setProfile(null)
@@ -288,9 +382,10 @@ export function useShiftApp() {
     return hydrationPromise
   }
 
-  async function fetchSupabaseData() {
+  async function fetchSupabaseData(currentProfile = profile) {
     setDataLoading(true)
     try {
+      const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
       const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await withTimeout(
         Promise.all([
           supabase.from('profiles').select('*').order('full_name'),
@@ -298,7 +393,9 @@ export function useShiftApp() {
           supabase.from('vehicles').select('*').order('name'),
           supabase.from('shifts').select('*').order('start_at'),
           supabase.from('driver_availability').select('*').order('from_date'),
-          supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100),
+          isStaff
+            ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
+            : Promise.resolve({ data: [], error: null }),
         ]),
         'Načtení provozních dat trvá příliš dlouho.'
       )
@@ -1126,6 +1223,20 @@ export function useShiftApp() {
     setActiveTab('users')
   }
 
+  function handleNotificationAction(notification) {
+    if (notification.shiftId) {
+      const targetShift = enrichedShifts.find((item) => item.id === notification.shiftId)
+      if (targetShift && profile?.role !== 'driver') {
+        openShiftForEdit(targetShift)
+        return
+      }
+    }
+
+    if (notification.targetTab) {
+      setActiveTab(notification.targetTab)
+    }
+  }
+
   return {
     activeTab,
     availability,
@@ -1148,6 +1259,7 @@ export function useShiftApp() {
     handleExportShifts,
     handleLogin,
     handleLogout,
+    handleNotificationAction,
     handleSaveAvailability,
     handleSaveDriver,
     handleSaveProfile,
@@ -1162,6 +1274,7 @@ export function useShiftApp() {
     loginPassword,
     message,
     mode,
+    notifications,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -1188,6 +1301,7 @@ export function useShiftApp() {
     todayShifts,
     onboardingItems,
     upcomingShift,
+    unreadNotificationCount,
     vehicleForm,
     vehicles,
     vehiclesMap,

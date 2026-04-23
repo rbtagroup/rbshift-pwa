@@ -14,6 +14,8 @@ export function DriverView({
   activeTab,
   currentDriver,
   dataLoading,
+  notifications,
+  onNotificationAction,
   upcomingShift,
   visibleShifts,
   availability,
@@ -70,6 +72,10 @@ export function DriverView({
         ) : null}
       </div>
     )
+  }
+
+  if (activeTab === 'notifications') {
+    return <NotificationsSection notifications={notifications} onNotificationAction={onNotificationAction} />
   }
 
   if (activeTab === 'availability') {
@@ -155,6 +161,8 @@ export function DispatcherView(props) {
     stats,
     thisWeekShifts,
     onboardingItems,
+    notifications,
+    onNotificationAction,
     drivers,
     vehicles,
     availability,
@@ -208,6 +216,10 @@ export function DispatcherView(props) {
         onExportShifts={onExportShifts}
       />
     )
+  }
+
+  if (activeTab === 'notifications') {
+    return <NotificationsSection notifications={notifications} onNotificationAction={onNotificationAction} />
   }
 
   if (activeTab === 'shifts') {
@@ -604,6 +616,33 @@ function ProblemsSection({ onEditShift, problems }) {
                 {shift.status === 'replacement_needed' ? 'Záskok' : RESPONSE_LABEL[shift.driver_response]}
               </StatusPill>
               <button className="ghost-button" onClick={() => onEditShift(shift)}>Otevřít</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function NotificationsSection({ notifications, onNotificationAction }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Notifikace</h3>
+          <p className="muted">Přehled akcí, upozornění a připomínek pro dnešní provoz.</p>
+        </div>
+      </div>
+      <div className="stack-md">
+        {notifications.length === 0 ? <EmptyState text="Momentálně tu nejsou žádné nové notifikace." /> : notifications.map((item) => (
+          <div className="list-card" key={item.id}>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.description}</p>
+            </div>
+            <div className="button-row wrap">
+              <StatusPill tone={item.tone}>{item.tone === 'danger' ? 'Vysoká priorita' : item.tone === 'warning' ? 'Pozor' : 'Info'}</StatusPill>
+              {item.actionLabel ? <button className="ghost-button" onClick={() => onNotificationAction(item)}>{item.actionLabel}</button> : null}
             </div>
           </div>
         ))}
