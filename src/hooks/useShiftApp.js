@@ -215,15 +215,17 @@ export function useShiftApp() {
       if (profileError) {
         setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
         setLoading(false)
-        return
+        return false
       }
 
       setProfile(userProfile)
       setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
       await fetchSupabaseData()
+      return true
     } catch (profileLoadError) {
       setProfile(null)
       setError(profileLoadError.message || 'Načtení uživatelského profilu selhalo.')
+      return false
     } finally {
       setLoading(false)
     }
@@ -607,7 +609,11 @@ export function useShiftApp() {
       setSession(data.session ?? null)
 
       if (data.session?.user?.id) {
-        await hydrateSupabaseUser(data.session.user.id)
+        const hydrated = await hydrateSupabaseUser(data.session.user.id)
+        if (hydrated) {
+          setFlash('success', 'Přihlášení proběhlo úspěšně.')
+        }
+        return
       }
 
       setFlash('success', 'Přihlášení proběhlo úspěšně.')
