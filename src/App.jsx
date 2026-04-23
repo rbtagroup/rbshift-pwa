@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { ROLE_LABEL, cx } from './utils'
 import { DispatcherView, DriverView, StatusPill } from './components/AppViews'
 import { AuthScreen } from './components/AuthScreen'
 import { useShiftApp } from './hooks/useShiftApp'
 
 function App() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const {
     activeTab,
     availability,
@@ -101,6 +103,17 @@ function App() {
         { id: 'history', label: 'Historie' },
       ]
 
+  const mobilePrimaryIds = profile?.role === 'driver'
+    ? ['today', 'notifications', 'my-shifts']
+    : ['dashboard', 'notifications', 'shifts', 'problems']
+  const mobilePrimaryNav = nav.filter((item) => mobilePrimaryIds.includes(item.id))
+  const mobileOverflowNav = nav.filter((item) => !mobilePrimaryIds.includes(item.id))
+
+  function handleTabChange(nextTab) {
+    setActiveTab(nextTab)
+    setMobileNavOpen(false)
+  }
+
   if (loading) {
     return <div className="app-shell center-screen"><div className="loader-card">Načítám RBSHIFT…</div></div>
   }
@@ -145,7 +158,7 @@ function App() {
 
           <nav className="nav-list">
             {nav.map((item) => (
-              <button key={item.id} className={cx('nav-button', activeTab === item.id && 'active')} onClick={() => setActiveTab(item.id)}>
+              <button key={item.id} className={cx('nav-button', activeTab === item.id && 'active')} onClick={() => handleTabChange(item.id)}>
                 {item.label}
               </button>
             ))}
@@ -154,15 +167,44 @@ function App() {
 
         <main className="content">
           <nav className="mobile-nav" aria-label="Mobilní navigace">
-            {nav.map((item) => (
+            {mobilePrimaryNav.map((item) => (
               <button
                 key={item.id}
                 className={cx('mobile-nav-button', activeTab === item.id && 'active')}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => handleTabChange(item.id)}
               >
                 {item.label}
               </button>
             ))}
+            {mobileOverflowNav.length > 0 ? (
+              <div className="mobile-nav-more">
+                <button
+                  className={cx(
+                    'mobile-nav-button',
+                    (mobileNavOpen || mobileOverflowNav.some((item) => item.id === activeTab)) && 'active',
+                  )}
+                  onClick={() => setMobileNavOpen((current) => !current)}
+                  aria-expanded={mobileNavOpen}
+                  aria-haspopup="menu"
+                >
+                  Více
+                </button>
+                {mobileNavOpen ? (
+                  <div className="mobile-nav-menu" role="menu">
+                    {mobileOverflowNav.map((item) => (
+                      <button
+                        key={item.id}
+                        className={cx('mobile-nav-menu-button', activeTab === item.id && 'active')}
+                        onClick={() => handleTabChange(item.id)}
+                        role="menuitem"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </nav>
 
           {error && <div className="banner error">{error}</div>}

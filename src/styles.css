@@ -333,6 +333,38 @@ button:disabled {
   display: none;
 }
 
+.mobile-nav-more {
+  position: relative;
+}
+
+.mobile-nav-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  min-width: 180px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(11, 18, 32, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.mobile-nav-menu-button {
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text);
+  padding: 0.72rem 0.82rem;
+}
+
+.mobile-nav-menu-button.active {
+  background: rgba(245, 197, 24, 0.14);
+  border-color: rgba(245, 197, 24, 0.35);
+}
+
 .content {
   display: grid;
   gap: 1rem;
@@ -709,6 +741,10 @@ button:disabled {
     line-height: 1;
     white-space: nowrap;
     box-shadow: 0 8px 24px rgba(2, 8, 23, 0.2);
+  }
+
+  .mobile-nav-more {
+    margin-left: auto;
   }
 
   .form-grid,
