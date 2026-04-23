@@ -1,27 +1,27 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-function json(status, body) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-    },
-  })
+function sendJson(res, status, body) {
+  res.status(status).setHeader('content-type', 'application/json; charset=utf-8').send(JSON.stringify(body))
 }
 
-async function getRequester(request) {
-  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return { error: json(500, { error: 'Na serveru chybí Supabase konfigurace.' }) }
+function extractBearerToken(req) {
+  const authorization = req.headers?.authorization ?? ''
+  return authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+}
+
+async function getRequester(req, res) {
+  if (!supabaseUrl || !serviceRoleKey) {
+    sendJson(res, 500, { error: 'Na serveru chybí Supabase konfigurace.' })
+    return null
   }
 
-  const authorization = request.headers.get('authorization') ?? ''
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
+  const token = extractBearerToken(req)
   if (!token) {
-    return { error: json(401, { error: 'Chybí přihlašovací token.' }) }
+    sendJson(res, 401, { error: 'Chybí přihlašovací token.' })
+    return null
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -29,8 +29,9 @@ async function getRequester(request) {
   })
 
   const { data: userData, error: authError } = await adminClient.auth.getUser(token)
-  if (authError || !userData.user) {
-    return { error: json(401, { error: 'Nepodařilo se ověřit uživatele.' }) }
+  if (authError || !userData?.user) {
+    sendJson(res, 401, { error: 'Nepodařilo se ověřit uživatele.' })
+    return null
   }
 
   const { data: profile, error: profileError } = await adminClient
@@ -40,29 +41,33 @@ async function getRequester(request) {
     .single()
 
   if (profileError || !profile || !['admin', 'dispatcher'].includes(profile.role)) {
-    return { error: json(403, { error: 'Na tuto akci nemáš oprávnění.' }) }
+    sendJson(res, 403, { error: 'Na tuto akci nemáš oprávnění.' })
+    return null
   }
 
   return { adminClient, requester: profile }
 }
 
-export default async function handler(request) {
-  if (request.method !== 'POST') {
-    return json(405, { error: 'Metoda není povolená.' })
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Metoda není povolená.' })
+    return
   }
 
-  const auth = await getRequester(request)
-  if (auth.error) return auth.error
+  const auth = await getRequester(req, res)
+  if (!auth) return
 
   const { adminClient } = auth
-  const body = await request.json().catch(() => null)
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
   const action = body?.action
 
   if (action === 'create') {
     const email = body?.email?.trim()?.toLowerCase()
     const password = body?.password?.trim()
+
     if (!email || !password || password.length < 6) {
-      return json(400, { error: 'Vyplň platný e-mail a heslo aspoň o 6 znacích.' })
+      sendJson(res, 400, { error: 'Vyplň platný e-mail a heslo aspoň o 6 znacích.' })
+      return
     }
 
     const { data, error } = await adminClient.auth.admin.createUser({
@@ -71,31 +76,36 @@ export default async function handler(request) {
       email_confirm: true,
     })
 
-    if (error || !data.user) {
-      return json(400, { error: error?.message ?? 'Nepodařilo se vytvořit auth účet.' })
+    if (error || !data?.user) {
+      sendJson(res, 400, { error: error?.message ?? 'Nepodařilo se vytvořit auth účet.' })
+      return
     }
 
-    return json(200, {
+    sendJson(res, 200, {
       user: {
         id: data.user.id,
         email: data.user.email,
       },
     })
+    return
   }
 
   if (action === 'delete') {
     const userId = body?.userId?.trim()
     if (!userId) {
-      return json(400, { error: 'Chybí ID uživatele.' })
+      sendJson(res, 400, { error: 'Chybí ID uživatele.' })
+      return
     }
 
     const { error } = await adminClient.auth.admin.deleteUser(userId)
     if (error) {
-      return json(400, { error: error.message })
+      sendJson(res, 400, { error: error.message })
+      return
     }
 
-    return json(200, { ok: true })
+    sendJson(res, 200, { ok: true })
+    return
   }
 
-  return json(400, { error: 'Neznámá akce.' })
+  sendJson(res, 400, { error: 'Neznámá akce.' })
 }
