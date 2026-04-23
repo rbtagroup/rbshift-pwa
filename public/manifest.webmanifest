@@ -1,0 +1,22 @@
+{
+  "name": "RBSHIFT Plánovač směn",
+  "short_name": "RBSHIFT",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "lang": "cs",
+  "description": "Mobilní plánovač směn pro řidiče a dispečink.",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,755 @@
+import {
+  AVAILABILITY_LABEL,
+  RESPONSE_LABEL,
+  SHIFT_TYPE_LABEL,
+  STATUS_LABEL,
+  cx,
+  formatDate,
+  formatDateTime,
+  formatTime,
+} from '../utils'
+
+export function DriverView({
+  activeTab,
+  currentDriver,
+  upcomingShift,
+  visibleShifts,
+  availability,
+  onRespond,
+  availabilityForm,
+  setAvailabilityForm,
+  onSaveAvailability,
+  vehiclesMap,
+  busy,
+}) {
+  const myAvailability = availability.filter((item) => item.driver_id === currentDriver?.id)
+
+  if (!currentDriver) {
+    return <div className="panel">K tomuto profilu zatím není přiřazen řidičský záznam.</div>
+  }
+
+  if (activeTab === 'today') {
+    return (
+      <div className="stack-xl">
+        <div className="hero-card">
+          <div>
+            <div className="eyebrow">Moje dnešní směna</div>
+            <h2>{upcomingShift ? SHIFT_TYPE_LABEL[upcomingShift.shift_type] : 'Dnes bez směny'}</h2>
+            <p>
+              {upcomingShift
+                ? `${formatDate(upcomingShift.start_at, { weekday: 'long' })} · ${formatTime(upcomingShift.start_at)}–${formatTime(upcomingShift.end_at)}`
+                : 'Aktuálně nemáš přiřazenou směnu.'}
+            </p>
+          </div>
+          {upcomingShift && <StatusPill tone={upcomingShift.driver_response === 'accepted' ? 'success' : upcomingShift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[upcomingShift.driver_response]}</StatusPill>}
+        </div>
+
+        {upcomingShift ? (
+          <div className="grid-2">
+            <section className="panel">
+              <h3>Detail směny</h3>
+              <InfoRow label="Auto" value={`${upcomingShift.vehicle?.name ?? '—'} · ${upcomingShift.vehicle?.plate ?? '—'}`} />
+              <InfoRow label="Stav směny" value={STATUS_LABEL[upcomingShift.status]} />
+              <InfoRow label="Poznámka" value={upcomingShift.note || 'Bez poznámky'} />
+              <div className="button-row">
+                <button className="primary-button" disabled={busy || upcomingShift.driver_response === 'accepted'} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
+                <button className="danger-button" disabled={busy || upcomingShift.driver_response === 'declined'} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
+              </div>
+            </section>
+            <section className="panel">
+              <h3>Další směny</h3>
+              <div className="stack-md">
+                {visibleShifts.slice(0, 4).map((shift) => (
+                  <ShiftListItem key={shift.id} shift={shift} compact />
+                ))}
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (activeTab === 'availability') {
+    return (
+      <div className="grid-2">
+        <section className="panel">
+          <h3>Moje dostupnost</h3>
+          <form className="form-grid" onSubmit={onSaveAvailability}>
+            <input type="hidden" value={availabilityForm.id ?? ''} />
+            <label>
+              Řidič
+              <input value={currentDriver.display_name} disabled />
+            </label>
+            <label>
+              Typ
+              <select value={availabilityForm.availability_type} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: currentDriver.id, availability_type: event.target.value }))}>
+                {Object.entries(AVAILABILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label>
+              Od
+              <input type="datetime-local" value={availabilityForm.from_date} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: currentDriver.id, from_date: event.target.value }))} />
+            </label>
+            <label>
+              Do
+              <input type="datetime-local" value={availabilityForm.to_date} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: currentDriver.id, to_date: event.target.value }))} />
+            </label>
+            <label className="full-width">
+              Poznámka
+              <textarea rows="3" value={availabilityForm.note} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: currentDriver.id, note: event.target.value }))} />
+            </label>
+            <button className="primary-button" disabled={busy}>Uložit dostupnost</button>
+          </form>
+        </section>
+        <section className="panel">
+          <h3>Moje blokace</h3>
+          <div className="stack-md">
+            {myAvailability.length === 0 ? <EmptyState text="Zatím nemáš žádnou zadanou nepřítomnost." /> : myAvailability.map((item) => (
+              <div className="list-card" key={item.id}>
+                <div>
+                  <strong>{AVAILABILITY_LABEL[item.availability_type]}</strong>
+                  <p>{formatDateTime(item.from_date)} — {formatDateTime(item.to_date)}</p>
+                  <p className="muted">{item.note || 'Bez poznámky'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Moje směny</h3>
+          <p className="muted">Přehled dneška, zítřka a dalších plánovaných jízd.</p>
+        </div>
+      </div>
+      <div className="stack-md">
+        {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : visibleShifts.map((shift) => (
+          <div className="list-card" key={shift.id}>
+            <div>
+              <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
+              <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+              <p className="muted">{shift.note || 'Bez poznámky'}</p>
+            </div>
+            <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function DispatcherView(props) {
+  const {
+    activeTab,
+    shifts,
+    todayShifts,
+    problems,
+    stats,
+    drivers,
+    vehicles,
+    availability,
+    changeLog,
+    filters,
+    setFilters,
+    calendarView,
+    setCalendarView,
+    groupedCalendar,
+    shiftForm,
+    setShiftForm,
+    onSaveShift,
+    onDeleteShift,
+    onEditShift,
+    availabilityForm,
+    setAvailabilityForm,
+    onSaveAvailability,
+    onAvailabilityEdit,
+    vehicleForm,
+    setVehicleForm,
+    onSaveVehicle,
+    onVehicleEdit,
+    driverForm,
+    setDriverForm,
+    onSaveDriver,
+    onDriverEdit,
+    profiles,
+    busy,
+    createDefaultShiftForm,
+  } = props
+
+  if (activeTab === 'dashboard') {
+    return (
+      <DashboardSection
+        shifts={shifts}
+        stats={stats}
+        todayShifts={todayShifts}
+        vehicles={vehicles}
+      />
+    )
+  }
+
+  if (activeTab === 'shifts') {
+    return (
+      <ShiftsSection
+        busy={busy}
+        calendarView={calendarView}
+        createDefaultShiftForm={createDefaultShiftForm}
+        drivers={drivers}
+        filters={filters}
+        groupedCalendar={groupedCalendar}
+        onDeleteShift={onDeleteShift}
+        onEditShift={onEditShift}
+        onSaveShift={onSaveShift}
+        setCalendarView={setCalendarView}
+        setFilters={setFilters}
+        setShiftForm={setShiftForm}
+        shiftForm={shiftForm}
+        vehicles={vehicles}
+      />
+    )
+  }
+
+  if (activeTab === 'problems') {
+    return <ProblemsSection onEditShift={onEditShift} problems={problems} />
+  }
+
+  if (activeTab === 'drivers') {
+    return (
+      <DriversSection
+        busy={busy}
+        driverForm={driverForm}
+        drivers={drivers}
+        onDriverEdit={onDriverEdit}
+        onSaveDriver={onSaveDriver}
+        profiles={profiles}
+        setDriverForm={setDriverForm}
+      />
+    )
+  }
+
+  if (activeTab === 'vehicles') {
+    return (
+      <VehiclesSection
+        busy={busy}
+        onSaveVehicle={onSaveVehicle}
+        onVehicleEdit={onVehicleEdit}
+        setVehicleForm={setVehicleForm}
+        vehicleForm={vehicleForm}
+        vehicles={vehicles}
+      />
+    )
+  }
+
+  if (activeTab === 'availability') {
+    return (
+      <AvailabilitySection
+        availability={availability}
+        availabilityForm={availabilityForm}
+        busy={busy}
+        drivers={drivers}
+        onAvailabilityEdit={onAvailabilityEdit}
+        onSaveAvailability={onSaveAvailability}
+        setAvailabilityForm={setAvailabilityForm}
+      />
+    )
+  }
+
+  return <HistorySection changeLog={changeLog} profiles={profiles} />
+}
+
+function DashboardSection({ shifts, stats, todayShifts, vehicles }) {
+  return (
+    <div className="stack-xl">
+      <section className="stats-grid">
+        <StatCard label="Dnešní směny" value={todayShifts.length} />
+        <StatCard label="Nepotvrzené" value={shifts.filter((item) => item.driver_response === 'pending').length} tone="warning" />
+        <StatCard label="Potřeba záskoku" value={shifts.filter((item) => item.status === 'replacement_needed').length} tone="danger" />
+        <StatCard label="Auta v servisu" value={vehicles.filter((item) => item.status === 'service').length} tone="info" />
+      </section>
+
+      <div className="grid-2">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Dnešní provoz</h3>
+              <p className="muted">Rychlý přehled směn, které běží dnes.</p>
+            </div>
+          </div>
+          <div className="stack-md">
+            {todayShifts.length === 0 ? <EmptyState text="Pro dnešek zatím nejsou žádné směny." /> : todayShifts.map((shift) => <ShiftListItem key={shift.id} shift={shift} />)}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Vytížení řidičů</h3>
+              <p className="muted">Souhrn podle počtu směn a hodin.</p>
+            </div>
+          </div>
+          <div className="stack-md">
+            {stats.map((item) => (
+              <div className="list-card" key={item.driver.id}>
+                <div>
+                  <strong>{item.driver.display_name}</strong>
+                  <p>{item.count} směn · {item.hours.toFixed(1)} h · noční {item.nights}×</p>
+                </div>
+                <StatusPill>{item.weekends} víkendy</StatusPill>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function ShiftsSection({
+  busy,
+  calendarView,
+  createDefaultShiftForm,
+  drivers,
+  filters,
+  groupedCalendar,
+  onDeleteShift,
+  onEditShift,
+  onSaveShift,
+  setCalendarView,
+  setFilters,
+  setShiftForm,
+  shiftForm,
+  vehicles,
+}) {
+  return (
+    <div className="grid-main">
+      <ShiftFormPanel
+        busy={busy}
+        createDefaultShiftForm={createDefaultShiftForm}
+        drivers={drivers}
+        onSaveShift={onSaveShift}
+        setShiftForm={setShiftForm}
+        shiftForm={shiftForm}
+        vehicles={vehicles}
+      />
+      <ShiftCalendarPanel
+        calendarView={calendarView}
+        drivers={drivers}
+        filters={filters}
+        groupedCalendar={groupedCalendar}
+        onDeleteShift={onDeleteShift}
+        onEditShift={onEditShift}
+        setCalendarView={setCalendarView}
+        setFilters={setFilters}
+        vehicles={vehicles}
+      />
+    </div>
+  )
+}
+
+function ShiftFormPanel({ busy, createDefaultShiftForm, drivers, onSaveShift, setShiftForm, shiftForm, vehicles }) {
+  return (
+    <section className="panel sticky-panel">
+      <div className="panel-header">
+        <div>
+          <h3>{shiftForm.id ? 'Upravit směnu' : 'Nová směna'}</h3>
+          <p className="muted">Systém hlídá kolize řidičů, aut i servisních blokací.</p>
+        </div>
+      </div>
+      <form className="form-grid" onSubmit={onSaveShift}>
+        <label>
+          Řidič
+          <select value={shiftForm.driver_id} onChange={(event) => setShiftForm((current) => ({ ...current, driver_id: event.target.value }))}>
+            <option value="">Vyber řidiče</option>
+            {drivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
+          </select>
+        </label>
+        <label>
+          Vozidlo
+          <select value={shiftForm.vehicle_id} onChange={(event) => setShiftForm((current) => ({ ...current, vehicle_id: event.target.value }))}>
+            <option value="">Vyber auto</option>
+            {vehicles.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.plate}</option>)}
+          </select>
+        </label>
+        <label>
+          Začátek
+          <input type="datetime-local" value={shiftForm.start_at} onChange={(event) => setShiftForm((current) => ({ ...current, start_at: event.target.value }))} />
+        </label>
+        <label>
+          Konec
+          <input type="datetime-local" value={shiftForm.end_at} onChange={(event) => setShiftForm((current) => ({ ...current, end_at: event.target.value }))} />
+        </label>
+        <label>
+          Typ směny
+          <select value={shiftForm.shift_type} onChange={(event) => setShiftForm((current) => ({ ...current, shift_type: event.target.value }))}>
+            {Object.entries(SHIFT_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label>
+          Stav
+          <select value={shiftForm.status} onChange={(event) => setShiftForm((current) => ({ ...current, status: event.target.value }))}>
+            {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label>
+          Reakce řidiče
+          <select value={shiftForm.driver_response} onChange={(event) => setShiftForm((current) => ({ ...current, driver_response: event.target.value }))}>
+            {Object.entries(RESPONSE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="full-width">
+          Poznámka
+          <textarea rows="4" value={shiftForm.note} onChange={(event) => setShiftForm((current) => ({ ...current, note: event.target.value }))} />
+        </label>
+        <div className="button-row full-width">
+          <button className="primary-button" disabled={busy}>{shiftForm.id ? 'Uložit změny' : 'Vytvořit směnu'}</button>
+          {shiftForm.id && <button className="ghost-button" type="button" onClick={() => setShiftForm(createDefaultShiftForm())}>Nová směna</button>}
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function ShiftCalendarPanel({
+  calendarView,
+  drivers,
+  filters,
+  groupedCalendar,
+  onDeleteShift,
+  onEditShift,
+  setCalendarView,
+  setFilters,
+  vehicles,
+}) {
+  return (
+    <section className="stack-xl">
+      <section className="panel">
+        <div className="panel-header wrap">
+          <div>
+            <h3>Kalendář směn</h3>
+            <p className="muted">Denní, týdenní nebo měsíční pohled s filtry.</p>
+          </div>
+          <div className="button-row wrap">
+            {['day', 'week', 'month'].map((view) => (
+              <button key={view} className={cx('ghost-button', calendarView === view && 'active-pill')} onClick={() => setCalendarView(view)}>{view === 'day' ? 'Den' : view === 'week' ? 'Týden' : 'Měsíc'}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filters-grid">
+          <select value={filters.driverId} onChange={(event) => setFilters((current) => ({ ...current, driverId: event.target.value }))}>
+            <option value="">Všichni řidiči</option>
+            {drivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
+          </select>
+          <select value={filters.vehicleId} onChange={(event) => setFilters((current) => ({ ...current, vehicleId: event.target.value }))}>
+            <option value="">Všechna auta</option>
+            {vehicles.map((item) => <option key={item.id} value={item.id}>{item.plate}</option>)}
+          </select>
+          <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <option value="">Všechny stavy</option>
+            {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select value={filters.response} onChange={(event) => setFilters((current) => ({ ...current, response: event.target.value }))}>
+            <option value="">Všechny reakce</option>
+            {Object.entries(RESPONSE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+
+        <div className="stack-lg">
+          {groupedCalendar.length === 0 ? <EmptyState text="Pro vybrané období nejsou žádné směny." /> : groupedCalendar.map(([day, items]) => (
+            <div key={day} className="day-group">
+              <div className="day-title">{day}</div>
+              <div className="stack-md">
+                {items.map((shift) => (
+                  <div className="list-card" key={shift.id}>
+                    <div>
+                      <strong>{shift.driver?.display_name ?? 'Bez řidiče'} · {shift.vehicle?.plate ?? 'Bez auta'}</strong>
+                      <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {SHIFT_TYPE_LABEL[shift.shift_type]}</p>
+                      <p className="muted">{shift.note || 'Bez poznámky'}</p>
+                    </div>
+                    <div className="button-row wrap">
+                      <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+                      <button className="ghost-button" onClick={() => onEditShift(shift)}>Upravit</button>
+                      <button className="danger-button" onClick={() => onDeleteShift(shift.id)}>Smazat</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </section>
+  )
+}
+
+function ProblemsSection({ onEditShift, problems }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Problémové směny</h3>
+          <p className="muted">Čekající na potvrzení, odmítnuté nebo bez obsazení.</p>
+        </div>
+      </div>
+      <div className="stack-md">
+        {problems.length === 0 ? <EmptyState text="Skvělé, momentálně nejsou evidované žádné problémové směny." /> : problems.map((shift) => (
+          <div className="list-card" key={shift.id}>
+            <div>
+              <strong>{shift.driver?.display_name ?? 'Bez řidiče'} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
+              <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
+              <p className="muted">{shift.note || 'Bez poznámky'}</p>
+            </div>
+            <div className="button-row wrap">
+              <StatusPill tone={shift.status === 'replacement_needed' || shift.driver_response === 'declined' ? 'danger' : 'warning'}>
+                {shift.status === 'replacement_needed' ? 'Záskok' : RESPONSE_LABEL[shift.driver_response]}
+              </StatusPill>
+              <button className="ghost-button" onClick={() => onEditShift(shift)}>Otevřít</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver, profiles, setDriverForm }) {
+  return (
+    <div className="grid-2">
+      <section className="panel">
+        <h3>{driverForm.id ? 'Upravit řidiče' : 'Nový řidič'}</h3>
+        <form className="form-grid" onSubmit={onSaveDriver}>
+          <label>
+            Jméno
+            <input value={driverForm.display_name} onChange={(event) => setDriverForm((current) => ({ ...current, display_name: event.target.value }))} />
+          </label>
+          <label>
+            Napojení na profil
+            <select value={driverForm.profile_id} onChange={(event) => setDriverForm((current) => ({ ...current, profile_id: event.target.value }))}>
+              <option value="">Bez vazby</option>
+              {profiles.filter((item) => item.role === 'driver').map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}
+            </select>
+          </label>
+          <label className="full-width">
+            Preferované směny
+            <div className="checkbox-row">
+              {Object.entries(SHIFT_TYPE_LABEL).filter(([key]) => key !== 'custom').map(([value, label]) => (
+                <label key={value} className="checkbox-item">
+                  <input
+                    type="checkbox"
+                    checked={driverForm.preferred_shift_types.includes(value)}
+                    onChange={(event) => setDriverForm((current) => ({
+                      ...current,
+                      preferred_shift_types: event.target.checked
+                        ? [...current.preferred_shift_types, value]
+                        : current.preferred_shift_types.filter((item) => item !== value),
+                    }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </label>
+          <label className="full-width">
+            Poznámka
+            <textarea rows="3" value={driverForm.note} onChange={(event) => setDriverForm((current) => ({ ...current, note: event.target.value }))} />
+          </label>
+          <button className="primary-button" disabled={busy}>Uložit řidiče</button>
+        </form>
+      </section>
+      <section className="panel">
+        <h3>Seznam řidičů</h3>
+        <div className="stack-md">
+          {drivers.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{item.display_name}</strong>
+                <p>{(item.preferred_shift_types ?? []).map((value) => SHIFT_TYPE_LABEL[value]).join(', ') || 'Bez preferencí'}</p>
+                <p className="muted">{item.note || 'Bez poznámky'}</p>
+              </div>
+              <button className="ghost-button" onClick={() => onDriverEdit(item)}>Upravit</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function VehiclesSection({ busy, onSaveVehicle, onVehicleEdit, setVehicleForm, vehicleForm, vehicles }) {
+  return (
+    <div className="grid-2">
+      <section className="panel">
+        <h3>{vehicleForm.id ? 'Upravit vozidlo' : 'Nové vozidlo'}</h3>
+        <form className="form-grid" onSubmit={onSaveVehicle}>
+          <label>
+            Název vozu
+            <input value={vehicleForm.name} onChange={(event) => setVehicleForm((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label>
+            SPZ
+            <input value={vehicleForm.plate} onChange={(event) => setVehicleForm((current) => ({ ...current, plate: event.target.value }))} />
+          </label>
+          <label>
+            Stav
+            <select value={vehicleForm.status} onChange={(event) => setVehicleForm((current) => ({ ...current, status: event.target.value }))}>
+              <option value="active">Aktivní</option>
+              <option value="service">V servisu</option>
+              <option value="inactive">Mimo provoz</option>
+            </select>
+          </label>
+          <label>
+            Servis od
+            <input type="datetime-local" value={vehicleForm.service_from} onChange={(event) => setVehicleForm((current) => ({ ...current, service_from: event.target.value }))} />
+          </label>
+          <label>
+            Servis do
+            <input type="datetime-local" value={vehicleForm.service_to} onChange={(event) => setVehicleForm((current) => ({ ...current, service_to: event.target.value }))} />
+          </label>
+          <label className="full-width">
+            Poznámka
+            <textarea rows="3" value={vehicleForm.note} onChange={(event) => setVehicleForm((current) => ({ ...current, note: event.target.value }))} />
+          </label>
+          <button className="primary-button" disabled={busy}>Uložit vozidlo</button>
+        </form>
+      </section>
+      <section className="panel">
+        <h3>Vozový park</h3>
+        <div className="stack-md">
+          {vehicles.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{item.name} · {item.plate}</strong>
+                <p>{item.status === 'service' ? 'V servisu' : item.status === 'inactive' ? 'Mimo provoz' : 'Aktivní'}</p>
+                <p className="muted">{item.note || 'Bez poznámky'}</p>
+              </div>
+              <button className="ghost-button" onClick={() => onVehicleEdit(item)}>Upravit</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function AvailabilitySection({ availability, availabilityForm, busy, drivers, onAvailabilityEdit, onSaveAvailability, setAvailabilityForm }) {
+  return (
+    <div className="grid-2">
+      <section className="panel">
+        <h3>{availabilityForm.id ? 'Upravit nepřítomnost' : 'Nová nepřítomnost'}</h3>
+        <form className="form-grid" onSubmit={onSaveAvailability}>
+          <label>
+            Řidič
+            <select value={availabilityForm.driver_id} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: event.target.value }))}>
+              <option value="">Vyber řidiče</option>
+              {drivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
+            </select>
+          </label>
+          <label>
+            Typ
+            <select value={availabilityForm.availability_type} onChange={(event) => setAvailabilityForm((current) => ({ ...current, availability_type: event.target.value }))}>
+              {Object.entries(AVAILABILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label>
+            Od
+            <input type="datetime-local" value={availabilityForm.from_date} onChange={(event) => setAvailabilityForm((current) => ({ ...current, from_date: event.target.value }))} />
+          </label>
+          <label>
+            Do
+            <input type="datetime-local" value={availabilityForm.to_date} onChange={(event) => setAvailabilityForm((current) => ({ ...current, to_date: event.target.value }))} />
+          </label>
+          <label className="full-width">
+            Poznámka
+            <textarea rows="3" value={availabilityForm.note} onChange={(event) => setAvailabilityForm((current) => ({ ...current, note: event.target.value }))} />
+          </label>
+          <button className="primary-button" disabled={busy}>Uložit nepřítomnost</button>
+        </form>
+      </section>
+      <section className="panel">
+        <h3>Evidence nepřítomností</h3>
+        <div className="stack-md">
+          {availability.length === 0 ? <EmptyState text="Zatím nejsou zadané žádné nepřítomnosti." /> : availability.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{drivers.find((driver) => driver.id === item.driver_id)?.display_name ?? 'Neznámý řidič'}</strong>
+                <p>{AVAILABILITY_LABEL[item.availability_type]} · {formatDateTime(item.from_date)} — {formatDateTime(item.to_date)}</p>
+                <p className="muted">{item.note || 'Bez poznámky'}</p>
+              </div>
+              <button className="ghost-button" onClick={() => onAvailabilityEdit(item)}>Upravit</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function HistorySection({ changeLog, profiles }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Historie změn</h3>
+          <p className="muted">Audit log pro dohledání změn ve směnách, autech a dostupnosti.</p>
+        </div>
+      </div>
+      <div className="stack-md">
+        {changeLog.length === 0 ? <EmptyState text="Zatím nebyly zaznamenány žádné změny." /> : changeLog.map((item) => (
+          <div className="list-card" key={item.id}>
+            <div>
+              <strong>{item.entity_type} · {item.action}</strong>
+              <p>{formatDateTime(item.created_at)}</p>
+              <p className="muted">Uživatel: {profiles.find((profile) => profile.id === item.user_id)?.full_name ?? item.user_id ?? '—'}</p>
+            </div>
+            <StatusPill>{item.entity_type}</StatusPill>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ShiftListItem({ shift, compact = false }) {
+  return (
+    <div className={cx('list-card', compact && 'compact')}>
+      <div>
+        <strong>{shift.driver?.display_name ?? 'Bez řidiče'} · {SHIFT_TYPE_LABEL[shift.shift_type]}</strong>
+        <p>{formatDate(shift.start_at, { weekday: 'long' })} · {formatTime(shift.start_at)}–{formatTime(shift.end_at)}</p>
+        <p className="muted">{shift.vehicle?.name ?? 'Bez auta'} · {shift.vehicle?.plate ?? '—'}</p>
+      </div>
+      <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+    </div>
+  )
+}
+
+export function StatusPill({ children, tone = 'neutral' }) {
+  return <span className={cx('pill', `pill-${tone}`)}>{children}</span>
+}
+
+function StatCard({ label, value, tone = 'neutral' }) {
+  return (
+    <div className="stat-card">
+      <span className="muted">{label}</span>
+      <strong>{value}</strong>
+      <span className={cx('stat-dot', `stat-dot-${tone}`)} />
+    </div>
+  )
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div className="info-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function EmptyState({ text }) {
+  return <div className="empty-state">{text}</div>
+}
