@@ -323,9 +323,14 @@ button:disabled {
 }
 
 .nav-button.active,
+.mobile-nav-button.active,
 .active-pill {
   background: rgba(245, 197, 24, 0.14);
   border-color: rgba(245, 197, 24, 0.35);
+}
+
+.mobile-nav {
+  display: none;
 }
 
 .content {
@@ -621,6 +626,16 @@ button:disabled {
     padding: 0.55rem;
   }
 
+  .topbar {
+    margin-bottom: 0.5rem;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.45rem;
+  }
+
   .topbar,
   .hero-card,
   .list-card,
@@ -631,10 +646,7 @@ button:disabled {
   }
 
   .sidebar {
-    order: 2;
-    position: static;
-    max-height: none;
-    overflow: visible;
+    display: none;
   }
 
   .layout {
@@ -667,6 +679,36 @@ button:disabled {
 
   .content {
     order: 1;
+    gap: 0.75rem;
+  }
+
+  .mobile-nav {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 18;
+    gap: 0.55rem;
+    overflow-x: auto;
+    padding: 0.15rem 0 0.25rem;
+    margin: -0.1rem 0 0.1rem;
+    scrollbar-width: none;
+  }
+
+  .mobile-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-nav-button {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(11, 18, 32, 0.94);
+    color: var(--text);
+    padding: 0.62rem 0.82rem;
+    font-size: 0.92rem;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 8px 24px rgba(2, 8, 23, 0.2);
   }
 
   .form-grid,
@@ -704,7 +746,24 @@ button:disabled {
     font-size: 16px;
   }
 
+  .primary-button,
+  .ghost-button,
+  .danger-button {
+    padding: 0.8rem 0.95rem;
+  }
+
+  label {
+    gap: 0.35rem;
+    font-size: 0.9rem;
+  }
+
   .list-card {
     padding: 0.82rem 0.88rem;
+  }
+
+  .list-card strong,
+  .panel h3,
+  .hero-card h2 {
+    font-size: 0.96rem;
   }
 }

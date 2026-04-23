@@ -153,6 +153,18 @@ function App() {
         </aside>
 
         <main className="content">
+          <nav className="mobile-nav" aria-label="Mobilní navigace">
+            {nav.map((item) => (
+              <button
+                key={item.id}
+                className={cx('mobile-nav-button', activeTab === item.id && 'active')}
+                onClick={() => setActiveTab(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
           {error && <div className="banner error">{error}</div>}
           {message && <div className="banner success">{message}</div>}
           {dataLoading && <div className="banner">Synchronizuji data ze Supabase…</div>}
