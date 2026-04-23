@@ -153,6 +153,12 @@ export function DriverView({
               <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
               <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
               <p className="muted">{shift.note || 'Bez poznámky'}</p>
+              {shift.driver_response === 'pending' ? (
+                <div className="button-row">
+                  <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
+                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
+                </div>
+              ) : null}
             </div>
             <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
           </div>
