@@ -13,6 +13,7 @@ function App() {
     changeLog,
     currentDriver,
     createDefaultShiftForm,
+    dataLoading,
     driverForm,
     drivers,
     driversMap,
@@ -136,11 +137,13 @@ function App() {
         <main className="content">
           {error && <div className="banner error">{error}</div>}
           {message && <div className="banner success">{message}</div>}
+          {dataLoading && <div className="banner">Synchronizuji data ze Supabase…</div>}
 
           {profile.role === 'driver' ? (
             <DriverView
               activeTab={activeTab}
               currentDriver={currentDriver}
+              dataLoading={dataLoading}
               upcomingShift={upcomingShift}
               visibleShifts={visibleShifts}
               availability={availability}
@@ -169,6 +172,7 @@ function App() {
               setFilters={setFilters}
               calendarView={calendarView}
               setCalendarView={setCalendarView}
+              dataLoading={dataLoading}
               groupedCalendar={groupedCalendar}
               shiftForm={shiftForm}
               setShiftForm={setShiftForm}

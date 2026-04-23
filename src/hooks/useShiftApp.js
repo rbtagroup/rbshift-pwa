@@ -6,6 +6,7 @@ import {
   endOfDay,
   formatDate,
   generateId,
+  generateUuid,
   getProblems,
   overlaps,
   startOfDay,
@@ -26,12 +27,22 @@ import { useFlash } from './useFlash'
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
 
 function withTimeout(promise, message) {
+  let timeoutId = null
+
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      window.setTimeout(() => reject(new Error(message)), AUTH_BOOTSTRAP_TIMEOUT_MS)
+      timeoutId = window.setTimeout(() => reject(new Error(message)), AUTH_BOOTSTRAP_TIMEOUT_MS)
     }),
-  ])
+  ]).finally(() => {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+    }
+  })
+}
+
+function isInvalidDate(value) {
+  return Number.isNaN(new Date(value).getTime())
 }
 
 export function useShiftApp() {
@@ -40,6 +51,7 @@ export function useShiftApp() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const { message, error, setMessage, setError, setFlash } = useFlash()
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -258,6 +270,7 @@ export function useShiftApp() {
   }
 
   async function fetchSupabaseData() {
+    setDataLoading(true)
     try {
       const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await withTimeout(
         Promise.all([
@@ -291,6 +304,8 @@ export function useShiftApp() {
     } catch (dataLoadError) {
       setError(dataLoadError.message || 'Načtení provozních dat selhalo.')
       return false
+    } finally {
+      setDataLoading(false)
     }
   }
 
@@ -305,6 +320,7 @@ export function useShiftApp() {
     if (!form.driver_id) return 'Vyber řidiče.'
     if (!form.vehicle_id) return 'Vyber vozidlo.'
     if (!form.start_at || !form.end_at) return 'Vyplň začátek a konec směny.'
+    if (isInvalidDate(form.start_at) || isInvalidDate(form.end_at)) return 'Vyplň platné datum a čas směny.'
     if (new Date(form.end_at) <= new Date(form.start_at)) return 'Konec směny musí být po začátku.'
 
     const otherShifts = enrichedShifts.filter((item) => item.id !== form.id)
@@ -338,7 +354,10 @@ export function useShiftApp() {
       return
     }
 
-    await supabase.from('change_log').insert([{ id: generateId('log'), created_at: new Date().toISOString(), ...entry }])
+    const { error: logError } = await supabase.from('change_log').insert([{ id: generateId('log'), created_at: new Date().toISOString(), ...entry }])
+    if (logError) {
+      console.warn('Nepodařilo se zapsat audit log.', logError)
+    }
   }
 
   async function handleSaveShift(event) {
@@ -352,7 +371,12 @@ export function useShiftApp() {
     }
 
     const payload = {
-      ...shiftForm,
+      driver_id: shiftForm.driver_id,
+      vehicle_id: shiftForm.vehicle_id,
+      shift_type: shiftForm.shift_type,
+      status: shiftForm.status,
+      driver_response: shiftForm.driver_response,
+      note: shiftForm.note.trim(),
       start_at: new Date(shiftForm.start_at).toISOString(),
       end_at: new Date(shiftForm.end_at).toISOString(),
       updated_by: profile?.id ?? null,
@@ -384,7 +408,12 @@ export function useShiftApp() {
 
     const query = shiftForm.id
       ? supabase.from('shifts').update(payload).eq('id', shiftForm.id)
-      : supabase.from('shifts').insert([{ ...payload, created_by: profile?.id ?? null, created_at: new Date().toISOString() }])
+      : supabase.from('shifts').insert([{
+        id: generateUuid(),
+        ...payload,
+        created_by: profile?.id ?? null,
+        created_at: new Date().toISOString(),
+      }])
 
     const { error: saveError } = await query
     if (saveError) {
@@ -478,6 +507,11 @@ export function useShiftApp() {
       setBusy(false)
       return
     }
+    if (!availabilityForm.from_date || !availabilityForm.to_date || isInvalidDate(availabilityForm.from_date) || isInvalidDate(availabilityForm.to_date)) {
+      setFlash('error', 'Vyplň platné datum a čas nepřítomnosti.')
+      setBusy(false)
+      return
+    }
     if (new Date(availabilityForm.to_date) < new Date(availabilityForm.from_date)) {
       setFlash('error', 'Konec blokace musí být po začátku.')
       setBusy(false)
@@ -485,7 +519,9 @@ export function useShiftApp() {
     }
 
     const payload = {
-      ...availabilityForm,
+      driver_id: availabilityForm.driver_id,
+      availability_type: availabilityForm.availability_type,
+      note: availabilityForm.note.trim(),
       from_date: new Date(availabilityForm.from_date).toISOString(),
       to_date: new Date(availabilityForm.to_date).toISOString(),
     }
@@ -506,7 +542,7 @@ export function useShiftApp() {
 
     const query = availabilityForm.id
       ? supabase.from('driver_availability').update(payload).eq('id', availabilityForm.id)
-      : supabase.from('driver_availability').insert([{ ...payload }])
+      : supabase.from('driver_availability').insert([{ id: generateUuid(), ...payload }])
 
     const { error: saveError } = await query
     if (saveError) {
@@ -524,14 +560,30 @@ export function useShiftApp() {
   async function handleSaveVehicle(event) {
     event.preventDefault()
     setBusy(true)
-    if (!vehicleForm.name || !vehicleForm.plate) {
+    const normalizedName = vehicleForm.name.trim()
+    const normalizedPlate = vehicleForm.plate.trim().toUpperCase()
+
+    if (!normalizedName || !normalizedPlate) {
       setFlash('error', 'Vyplň název i SPZ vozidla.')
+      setBusy(false)
+      return
+    }
+    if ((vehicleForm.service_from && isInvalidDate(vehicleForm.service_from)) || (vehicleForm.service_to && isInvalidDate(vehicleForm.service_to))) {
+      setFlash('error', 'Vyplň platné datum servisu.')
+      setBusy(false)
+      return
+    }
+    if (vehicleForm.service_from && vehicleForm.service_to && new Date(vehicleForm.service_to) < new Date(vehicleForm.service_from)) {
+      setFlash('error', 'Konec servisu musí být po začátku.')
       setBusy(false)
       return
     }
 
     const payload = {
-      ...vehicleForm,
+      name: normalizedName,
+      plate: normalizedPlate,
+      status: vehicleForm.status,
+      note: vehicleForm.note.trim(),
       service_from: vehicleForm.service_from ? new Date(vehicleForm.service_from).toISOString() : null,
       service_to: vehicleForm.service_to ? new Date(vehicleForm.service_to).toISOString() : null,
     }
@@ -552,7 +604,7 @@ export function useShiftApp() {
 
     const query = vehicleForm.id
       ? supabase.from('vehicles').update(payload).eq('id', vehicleForm.id)
-      : supabase.from('vehicles').insert([{ ...payload }])
+      : supabase.from('vehicles').insert([{ id: generateUuid(), ...payload }])
 
     const { error: saveError } = await query
     if (saveError) {
@@ -570,14 +622,19 @@ export function useShiftApp() {
   async function handleSaveDriver(event) {
     event.preventDefault()
     setBusy(true)
-    if (!driverForm.display_name) {
+    const normalizedDisplayName = driverForm.display_name.trim()
+
+    if (!normalizedDisplayName) {
       setFlash('error', 'Vyplň jméno řidiče.')
       setBusy(false)
       return
     }
 
     const payload = {
-      ...driverForm,
+      display_name: normalizedDisplayName,
+      note: driverForm.note.trim(),
+      preferred_shift_types: driverForm.preferred_shift_types,
+      active: driverForm.active,
       profile_id: driverForm.profile_id || null,
     }
 
@@ -597,7 +654,7 @@ export function useShiftApp() {
 
     const query = driverForm.id
       ? supabase.from('drivers').update(payload).eq('id', driverForm.id)
-      : supabase.from('drivers').insert([{ ...payload }])
+      : supabase.from('drivers').insert([{ id: generateUuid(), ...payload }])
 
     const { error: saveError } = await query
     if (saveError) {
@@ -629,10 +686,11 @@ export function useShiftApp() {
 
     setBusy(true)
     setError('')
+    const normalizedEmail = loginEmail.trim()
 
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
+        email: normalizedEmail,
         password: loginPassword,
       })
 
@@ -664,12 +722,23 @@ export function useShiftApp() {
     if (mode === 'demo') {
       localStorage.removeItem(DEMO_USER_KEY)
       setProfile(null)
+      setSession(null)
       setActiveTab('dashboard')
+      setLoginEmail('')
+      setLoginPassword('')
+      setMessage('')
+      setError('')
       resetForms()
       return
     }
     await supabase.auth.signOut()
+    setSession(null)
     setProfile(null)
+    setActiveTab('dashboard')
+    setLoginEmail('')
+    setLoginPassword('')
+    setMessage('')
+    setError('')
     resetForms()
   }
 
@@ -743,6 +812,7 @@ export function useShiftApp() {
     calendarView,
     changeLog,
     currentDriver,
+    dataLoading,
     driverForm,
     drivers,
     driversMap,

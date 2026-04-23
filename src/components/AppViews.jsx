@@ -12,6 +12,7 @@ import {
 export function DriverView({
   activeTab,
   currentDriver,
+  dataLoading,
   upcomingShift,
   visibleShifts,
   availability,
@@ -25,7 +26,7 @@ export function DriverView({
   const myAvailability = availability.filter((item) => item.driver_id === currentDriver?.id)
 
   if (!currentDriver) {
-    return <div className="panel">K tomuto profilu zatím není přiřazen řidičský záznam.</div>
+    return <div className="panel">{dataLoading ? 'Načítám řidičská data…' : 'K tomuto profilu zatím není přiřazen řidičský záznam.'}</div>
   }
 
   if (activeTab === 'today') {
@@ -180,6 +181,7 @@ export function DispatcherView(props) {
     profiles,
     busy,
     createDefaultShiftForm,
+    dataLoading,
   } = props
 
   if (activeTab === 'dashboard') {
@@ -199,6 +201,7 @@ export function DispatcherView(props) {
         busy={busy}
         calendarView={calendarView}
         createDefaultShiftForm={createDefaultShiftForm}
+        dataLoading={dataLoading}
         drivers={drivers}
         filters={filters}
         groupedCalendar={groupedCalendar}
@@ -351,7 +354,10 @@ function ShiftsSection({
   )
 }
 
-function ShiftFormPanel({ busy, createDefaultShiftForm, drivers, onSaveShift, setShiftForm, shiftForm, vehicles }) {
+function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, onSaveShift, setShiftForm, shiftForm, vehicles }) {
+  const hasDrivers = drivers.length > 0
+  const hasVehicles = vehicles.length > 0
+
   return (
     <section className="panel sticky-panel">
       <div className="panel-header">
@@ -367,6 +373,7 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, drivers, onSaveShift, se
             <option value="">Vyber řidiče</option>
             {drivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
           </select>
+          {!hasDrivers ? <p className="muted">{dataLoading ? 'Načítám seznam řidičů…' : 'Zatím nemáš žádného řidiče. Nejdřív ho přidej v záložce Řidiči.'}</p> : null}
         </label>
         <label>
           Vozidlo
@@ -374,6 +381,7 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, drivers, onSaveShift, se
             <option value="">Vyber auto</option>
             {vehicles.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.plate}</option>)}
           </select>
+          {!hasVehicles ? <p className="muted">{dataLoading ? 'Načítám seznam vozidel…' : 'Zatím nemáš žádné vozidlo. Nejdřív ho přidej v záložce Auta.'}</p> : null}
         </label>
         <label>
           Začátek
@@ -406,7 +414,7 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, drivers, onSaveShift, se
           <textarea rows="4" value={shiftForm.note} onChange={(event) => setShiftForm((current) => ({ ...current, note: event.target.value }))} />
         </label>
         <div className="button-row full-width">
-          <button className="primary-button" disabled={busy}>{shiftForm.id ? 'Uložit změny' : 'Vytvořit směnu'}</button>
+          <button className="primary-button" disabled={busy || !hasDrivers || !hasVehicles}>{shiftForm.id ? 'Uložit změny' : 'Vytvořit směnu'}</button>
           {shiftForm.id && <button className="ghost-button" type="button" onClick={() => setShiftForm(createDefaultShiftForm())}>Nová směna</button>}
         </div>
       </form>
@@ -564,6 +572,7 @@ function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver,
       <section className="panel">
         <h3>Seznam řidičů</h3>
         <div className="stack-md">
+          {drivers.length === 0 ? <EmptyState text="Zatím tu není žádný řidič. Nejprve vytvoř řidičský záznam vlevo." /> : null}
           {drivers.map((item) => (
             <div className="list-card" key={item.id}>
               <div>
