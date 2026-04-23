@@ -23,11 +23,19 @@ import {
 } from '../defaults'
 import { useFlash } from './useFlash'
 
-const INITIAL_AUTH_FALLBACK_MS = 2500
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
+
+function withTimeout(promise, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), AUTH_BOOTSTRAP_TIMEOUT_MS)
+    }),
+  ])
+}
 
 export function useShiftApp() {
   const hydrationRef = useRef({ userId: null, promise: null })
-  const bootstrapResolvedRef = useRef(false)
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -66,14 +74,10 @@ export function useShiftApp() {
     }
 
     let mounted = true
-    bootstrapResolvedRef.current = false
-    const fallbackTimer = window.setTimeout(() => {
-      if (!mounted || bootstrapResolvedRef.current) return
-      setLoading(false)
-    }, INITIAL_AUTH_FALLBACK_MS)
+    let authResolved = false
 
-    const resolveBootstrap = async (nextSession, { clearError = true } = {}) => {
-      if (!mounted || bootstrapResolvedRef.current) return
+    const applySession = async (nextSession, { clearError = true } = {}) => {
+      if (!mounted) return
 
       if (clearError) {
         setError('')
@@ -81,57 +85,55 @@ export function useShiftApp() {
 
       setSession(nextSession ?? null)
 
-      if (nextSession?.user?.id) {
-        const hydrated = await hydrateSupabaseUser(nextSession.user.id)
-        if (!mounted) return
-        if (hydrated) {
-          bootstrapResolvedRef.current = true
-        }
+      if (!nextSession?.user?.id) {
+        setProfile(null)
+        setLoading(false)
+        authResolved = true
         return
       }
 
-      setProfile(null)
-      setLoading(false)
-      bootstrapResolvedRef.current = true
+      await hydrateSupabaseUser(nextSession.user.id)
+      if (!mounted) return
+      authResolved = true
     }
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       try {
-        await resolveBootstrap(nextSession, { clearError: event !== 'SIGNED_OUT' })
+        await applySession(nextSession)
       } catch (authStateError) {
+        if (!mounted) return
         setProfile(null)
         setError(authStateError.message || 'Nepodařilo se obnovit přihlášení.')
         setLoading(false)
-        bootstrapResolvedRef.current = true
       }
     })
 
-    supabase.auth.getSession()
+    withTimeout(
+      supabase.auth.getSession(),
+      'Inicializace přihlášení trvá příliš dlouho. Zkus stránku obnovit.'
+    )
       .then(async ({ data, error: authError }) => {
-        if (!mounted || bootstrapResolvedRef.current) return
+        if (!mounted || authResolved) return
 
         if (authError) {
           setError(authError.message)
           setLoading(false)
-          bootstrapResolvedRef.current = true
           return
         }
 
-        await resolveBootstrap(data.session)
+        await applySession(data.session)
       })
       .catch((bootstrapError) => {
-        if (!mounted || bootstrapResolvedRef.current) return
+        if (!mounted || authResolved) return
         setProfile(null)
         setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
         setLoading(false)
-        bootstrapResolvedRef.current = true
       })
 
     return () => {
       mounted = false
-      window.clearTimeout(fallbackTimer)
       subscription.unsubscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,21 +223,23 @@ export function useShiftApp() {
     setError('')
     const hydrationPromise = (async () => {
       try {
-        const { data: userProfile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single()
+        const { data: userProfile, error: profileError } = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single(),
+          'Načtení uživatelského profilu trvá příliš dlouho.'
+        )
 
         if (profileError) {
           setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
-          setLoading(false)
           return false
         }
 
         setProfile(userProfile)
         setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
-        await fetchSupabaseData()
+        void fetchSupabaseData()
         return true
       } catch (profileLoadError) {
         setProfile(null)
@@ -254,30 +258,40 @@ export function useShiftApp() {
   }
 
   async function fetchSupabaseData() {
-    const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await Promise.all([
-      supabase.from('profiles').select('*').order('full_name'),
-      supabase.from('drivers').select('*').order('display_name'),
-      supabase.from('vehicles').select('*').order('name'),
-      supabase.from('shifts').select('*').order('start_at'),
-      supabase.from('driver_availability').select('*').order('from_date'),
-      supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100),
-    ])
+    try {
+      const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await withTimeout(
+        Promise.all([
+          supabase.from('profiles').select('*').order('full_name'),
+          supabase.from('drivers').select('*').order('display_name'),
+          supabase.from('vehicles').select('*').order('name'),
+          supabase.from('shifts').select('*').order('start_at'),
+          supabase.from('driver_availability').select('*').order('from_date'),
+          supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100),
+        ]),
+        'Načtení provozních dat trvá příliš dlouho.'
+      )
 
-    const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes]
-    const firstError = results.find((item) => item.error)?.error
-    if (firstError) {
-      setError(firstError.message)
-      return
+      const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes]
+      const firstError = results.find((item) => item.error)?.error
+      if (firstError) {
+        setError(firstError.message)
+        return false
+      }
+
+      setDemoState({
+        profiles: profilesRes.data ?? [],
+        drivers: driversRes.data ?? [],
+        vehicles: vehiclesRes.data ?? [],
+        shifts: shiftsRes.data ?? [],
+        availability: availabilityRes.data ?? [],
+        changeLog: changeLogRes.data ?? [],
+      })
+
+      return true
+    } catch (dataLoadError) {
+      setError(dataLoadError.message || 'Načtení provozních dat selhalo.')
+      return false
     }
-
-    setDemoState({
-      profiles: profilesRes.data ?? [],
-      drivers: driversRes.data ?? [],
-      vehicles: vehiclesRes.data ?? [],
-      shifts: shiftsRes.data ?? [],
-      availability: availabilityRes.data ?? [],
-      changeLog: changeLogRes.data ?? [],
-    })
   }
 
   function resetForms() {
