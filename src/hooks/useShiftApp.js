@@ -25,6 +25,7 @@ import { useFlash } from './useFlash'
 
 export function useShiftApp() {
   const hydrationRef = useRef({ userId: null, promise: null })
+  const bootstrapResolvedRef = useRef(false)
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -63,28 +64,64 @@ export function useShiftApp() {
     }
 
     let mounted = true
+    bootstrapResolvedRef.current = false
+
+    const resolveBootstrap = async (nextSession, { clearError = true } = {}) => {
+      if (!mounted || bootstrapResolvedRef.current) return
+
+      if (clearError) {
+        setError('')
+      }
+
+      setSession(nextSession ?? null)
+
+      if (nextSession?.user?.id) {
+        const hydrated = await hydrateSupabaseUser(nextSession.user.id)
+        if (!mounted) return
+        if (hydrated) {
+          bootstrapResolvedRef.current = true
+        }
+        return
+      }
+
+      setProfile(null)
+      setLoading(false)
+      bootstrapResolvedRef.current = true
+    }
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       try {
-        setSession(nextSession)
-        if (nextSession) {
-          await hydrateSupabaseUser(nextSession.user.id)
-          return
-        }
-
-        setProfile(null)
-        if (event !== 'SIGNED_OUT') {
-          setError('')
-        }
-        setLoading(false)
+        await resolveBootstrap(nextSession, { clearError: event !== 'SIGNED_OUT' })
       } catch (authStateError) {
         setProfile(null)
         setError(authStateError.message || 'Nepodařilo se obnovit přihlášení.')
         setLoading(false)
+        bootstrapResolvedRef.current = true
       }
     })
+
+    supabase.auth.getSession()
+      .then(async ({ data, error: authError }) => {
+        if (!mounted || bootstrapResolvedRef.current) return
+
+        if (authError) {
+          setError(authError.message)
+          setLoading(false)
+          bootstrapResolvedRef.current = true
+          return
+        }
+
+        await resolveBootstrap(data.session)
+      })
+      .catch((bootstrapError) => {
+        if (!mounted || bootstrapResolvedRef.current) return
+        setProfile(null)
+        setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
+        setLoading(false)
+        bootstrapResolvedRef.current = true
+      })
 
     return () => {
       mounted = false
