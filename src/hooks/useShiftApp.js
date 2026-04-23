@@ -4,6 +4,7 @@ import {
   addDays,
   driverStats,
   endOfDay,
+  downloadCsv,
   formatDate,
   formatDateTime,
   generateId,
@@ -12,12 +13,13 @@ import {
   overlaps,
   startOfDay,
   toInputValue,
-  downloadCsv,
+  urlBase64ToUint8Array,
 } from '../utils'
 import { hasSupabaseConfig, supabase } from '../supabaseClient'
 import {
   DEFAULT_AVAILABILITY_FORM,
   DEFAULT_DRIVER_FORM,
+  DEFAULT_NOTIFICATION_PREFERENCES,
   DEFAULT_PROFILE_FORM,
   DEFAULT_SHIFT_FORM,
   DEFAULT_VEHICLE_FORM,
@@ -177,6 +179,14 @@ export function useShiftApp() {
   const availability = state.availability ?? []
   const changeLog = state.changeLog ?? []
   const profiles = state.profiles ?? []
+  const notificationPreferencesList = state.notificationPreferences ?? []
+  const notificationEvents = state.notificationEvents ?? []
+  const notificationPreferences = profile
+    ? (notificationPreferencesList.find((item) => item.user_id === profile.id) ?? { user_id: profile.id, ...DEFAULT_NOTIFICATION_PREFERENCES })
+    : { user_id: '', ...DEFAULT_NOTIFICATION_PREFERENCES }
+  const inboxNotifications = notificationEvents
+    .filter((item) => !profile || item.user_id === profile.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
   const driversMap = useMemo(() => Object.fromEntries(drivers.map((item) => [item.id, item])), [drivers])
   const vehiclesMap = useMemo(() => Object.fromEntries(vehicles.map((item) => [item.id, item])), [vehicles])
@@ -348,7 +358,8 @@ export function useShiftApp() {
     return items
   }, [currentDriver, onboardingItems, problems, profile, vehicles, visibleShifts])
 
-  const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length || notifications.length
+  const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length
+    + inboxNotifications.filter((item) => !item.read_at).length
 
   function dismissPopup(id) {
     const timeoutId = popupTimersRef.current.get(id)
@@ -372,6 +383,145 @@ export function useShiftApp() {
       popupTimersRef.current.clear()
     }
   }, [])
+
+  async function callNotificationApi(body) {
+    const response = await fetch('/api/notifications', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(result?.error ?? 'Notifikační operace selhala.')
+    }
+    return result
+  }
+
+  async function dispatchShiftEvent(eventType, previousShift, nextShift) {
+    if (mode !== 'supabase' || !session?.access_token) return
+
+    try {
+      await callNotificationApi({
+        action: 'dispatch-shift-event',
+        eventType,
+        previousShift,
+        nextShift,
+      })
+    } catch (dispatchError) {
+      console.warn('Nepodařilo se rozeslat notifikace ke směně.', dispatchError)
+    }
+  }
+
+  async function handleSaveNotificationPreferences(nextPreferences) {
+    const payload = {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...nextPreferences,
+    }
+
+    if (mode === 'demo') {
+      setDemoState((current) => {
+        const rest = (current.notificationPreferences ?? []).filter((item) => item.user_id !== profile?.id)
+        return {
+          ...current,
+          notificationPreferences: [...rest, { user_id: profile?.id, ...payload, updated_at: new Date().toISOString() }],
+        }
+      })
+      setFlash('success', 'Nastavení notifikací bylo uloženo.')
+      return
+    }
+
+    try {
+      const result = await callNotificationApi({
+        action: 'save-preferences',
+        preferences: payload,
+      })
+      setDemoState((current) => ({
+        ...current,
+        notificationPreferences: [
+          ...(current.notificationPreferences ?? []).filter((item) => item.user_id !== profile?.id),
+          result.preferences,
+        ],
+      }))
+      setFlash('success', 'Nastavení notifikací bylo uloženo.')
+    } catch (preferencesError) {
+      setFlash('error', preferencesError.message)
+    }
+  }
+
+  async function enablePushNotifications() {
+    if (mode !== 'supabase') {
+      setFlash('success', 'V demo režimu je push jen ilustrační.')
+      return
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setFlash('error', 'Tento prohlížeč nepodporuje web push notifikace.')
+      return
+    }
+
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setFlash('error', 'Pro push notifikace je potřeba povolit upozornění v prohlížeči.')
+        return
+      }
+
+      const config = await callNotificationApi({ action: 'config' })
+      if (!config?.pushSupported || !config?.publicKey) {
+        setFlash('error', 'Na serveru zatím nejsou nastavené VAPID klíče pro web push.')
+        return
+      }
+
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(config.publicKey),
+      })
+
+      await callNotificationApi({
+        action: 'save-push-subscription',
+        subscription: subscription.toJSON(),
+      })
+
+      await handleSaveNotificationPreferences({
+        ...notificationPreferences,
+        push_enabled: true,
+      })
+    } catch (pushError) {
+      setFlash('error', pushError.message || 'Nepodařilo se zapnout push notifikace.')
+    }
+  }
+
+  async function markNotificationRead(notificationId) {
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        notificationEvents: (current.notificationEvents ?? []).map((item) => (
+          item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item
+        )),
+      }))
+      return
+    }
+
+    try {
+      await callNotificationApi({
+        action: 'mark-read',
+        notificationId,
+      })
+      setDemoState((current) => ({
+        ...current,
+        notificationEvents: (current.notificationEvents ?? []).map((item) => (
+          item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item
+        )),
+      }))
+    } catch (markError) {
+      console.warn('Nepodařilo se označit notifikaci jako přečtenou.', markError)
+    }
+  }
 
   async function hydrateSupabaseUser(userId) {
     if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
@@ -560,7 +710,7 @@ export function useShiftApp() {
     }
     try {
       const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
-      const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await withTimeout(
+      const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
         Promise.all([
           supabase.from('profiles').select('*').order('full_name'),
           supabase.from('drivers').select('*').order('display_name'),
@@ -570,11 +720,17 @@ export function useShiftApp() {
           isStaff
             ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
             : Promise.resolve({ data: [], error: null }),
+          currentProfile?.id
+            ? supabase.from('notification_preferences').select('*').eq('user_id', currentProfile.id)
+            : Promise.resolve({ data: [], error: null }),
+          currentProfile?.id
+            ? supabase.from('notification_events').select('*').order('created_at', { ascending: false }).limit(50)
+            : Promise.resolve({ data: [], error: null }),
         ]),
         'Načtení provozních dat trvá příliš dlouho.'
       )
 
-      const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes]
+      const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes]
       const firstError = results.find((item) => item.error)?.error
       if (firstError) {
         setError(firstError.message)
@@ -588,6 +744,8 @@ export function useShiftApp() {
         shifts: shiftsRes.data ?? [],
         availability: availabilityRes.data ?? [],
         changeLog: changeLogRes.data ?? [],
+        notificationPreferences: preferencesRes.data ?? [],
+        notificationEvents: notificationEventsRes.data ?? [],
       })
 
       return true
@@ -677,6 +835,7 @@ export function useShiftApp() {
     }
 
     const previous = shiftForm.id ? shifts.find((item) => item.id === shiftForm.id) : null
+    const nextShiftId = shiftForm.id || generateUuid()
 
     if (mode === 'demo') {
       setDemoState((current) => {
@@ -702,7 +861,7 @@ export function useShiftApp() {
     const query = shiftForm.id
       ? supabase.from('shifts').update(payload).eq('id', shiftForm.id)
       : supabase.from('shifts').insert([{
-        id: generateUuid(),
+        id: nextShiftId,
         ...payload,
         created_by: profile?.id ?? null,
         created_at: new Date().toISOString(),
@@ -717,12 +876,22 @@ export function useShiftApp() {
 
     await appendLog({
       entity_type: 'shift',
-      entity_id: shiftForm.id ?? 'new',
+      entity_id: shiftForm.id ?? nextShiftId,
       action: shiftForm.id ? 'updated' : 'created',
       old_data: previous ?? null,
       new_data: payload,
       user_id: profile?.id ?? null,
     })
+    await dispatchShiftEvent(
+      shiftForm.id ? 'shift_updated' : 'shift_created',
+      previous,
+      {
+        ...(previous ?? {}),
+        ...payload,
+        id: nextShiftId,
+        created_by: previous?.created_by ?? profile?.id ?? null,
+      }
+    )
     await fetchSupabaseData()
     setShiftForm(DEFAULT_SHIFT_FORM())
     setFlash('success', shiftForm.id ? 'Směna byla upravena.' : 'Směna byla vytvořena.')
@@ -753,6 +922,7 @@ export function useShiftApp() {
       return
     }
     await appendLog({ entity_type: 'shift', entity_id: id, action: 'deleted', old_data: previous, new_data: null, user_id: profile?.id ?? null })
+    await dispatchShiftEvent('shift_deleted', previous, null)
     await fetchSupabaseData()
     setFlash('success', 'Směna byla smazána.')
     setBusy(false)
@@ -828,6 +998,15 @@ export function useShiftApp() {
       return
     }
     await appendLog({ entity_type: 'shift', entity_id: shift.id, action: actionConfig.logAction, old_data: shift, new_data: patch, user_id: profile?.id ?? null })
+    await dispatchShiftEvent(
+      actionConfig.logAction === 'response'
+        ? 'shift_response'
+        : actionConfig.logAction === 'driver_release'
+          ? 'shift_release'
+          : 'shift_offer',
+      shift,
+      { ...shift, ...patch }
+    )
     await fetchSupabaseData()
     setFlash('success', actionConfig.successMessage)
     setBusy(false)
@@ -1457,6 +1636,10 @@ export function useShiftApp() {
   }
 
   function handleNotificationAction(notification) {
+    if (notification.created_at && !notification.read_at) {
+      void markNotificationRead(notification.id)
+    }
+
     if (notification.shiftId) {
       const targetShift = enrichedShifts.find((item) => item.id === notification.shiftId)
       if (targetShift && profile?.role !== 'driver') {
@@ -1490,6 +1673,7 @@ export function useShiftApp() {
     handleDeleteShift,
     handleDeleteDriver,
     handleDeleteProfile,
+    handleSaveNotificationPreferences,
     handleExportShifts,
     handleLogin,
     handleLogout,
@@ -1502,6 +1686,8 @@ export function useShiftApp() {
     handleShiftResponse,
     handleToggleDriverActive,
     handleToggleProfileActive,
+    enablePushNotifications,
+    inboxNotifications,
     loading,
     loginAsDemoUser,
     loginEmail,
@@ -1518,6 +1704,7 @@ export function useShiftApp() {
     profile,
     profileForm,
     profiles,
+    notificationPreferences,
     popupNotifications,
     session,
     setActiveTab,
@@ -1534,6 +1721,7 @@ export function useShiftApp() {
     stats,
     thisWeekShifts,
     todayShifts,
+    markNotificationRead,
     onboardingItems,
     upcomingShift,
     unreadNotificationCount,

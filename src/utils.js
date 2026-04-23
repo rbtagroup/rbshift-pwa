@@ -176,3 +176,16 @@ export function downloadCsv(filename, headers, rows) {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
+
+export function urlBase64ToUint8Array(value) {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4)
+  const base64 = (value + padding).replaceAll('-', '+').replaceAll('_', '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index)
+  }
+
+  return outputArray
+}

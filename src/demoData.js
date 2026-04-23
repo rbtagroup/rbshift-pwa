@@ -200,6 +200,52 @@ export const demoChangeLog = [
   },
 ]
 
+export const demoNotificationPreferences = [
+  {
+    user_id: 'profile-admin',
+    push_enabled: false,
+    email_enabled: true,
+    sms_enabled: false,
+    critical_only: false,
+    phone_override: '',
+    updated_at: new Date().toISOString(),
+  },
+  {
+    user_id: 'profile-dispatcher',
+    push_enabled: false,
+    email_enabled: true,
+    sms_enabled: false,
+    critical_only: false,
+    phone_override: '',
+    updated_at: new Date().toISOString(),
+  },
+  {
+    user_id: 'profile-driver-1',
+    push_enabled: false,
+    email_enabled: true,
+    sms_enabled: false,
+    critical_only: false,
+    phone_override: '',
+    updated_at: new Date().toISOString(),
+  },
+]
+
+export const demoNotificationEvents = [
+  {
+    id: 'notification-1',
+    user_id: 'profile-driver-1',
+    kind: 'shift_created',
+    priority: 'normal',
+    title: 'Přišla ti nová směna',
+    body: 'Dnes 06:00 · 7B7 2020',
+    delivery_channels: ['in_app'],
+    delivery_results: { in_app: 'demo' },
+    metadata: null,
+    read_at: null,
+    created_at: new Date().toISOString(),
+  },
+]
+
 export const demoUsers = [
   {
     label: 'Admin',
@@ -230,4 +276,6 @@ export const emptyState = {
   shifts: demoShifts,
   availability: demoAvailability,
   changeLog: demoChangeLog,
+  notificationPreferences: demoNotificationPreferences,
+  notificationEvents: demoNotificationEvents,
 }

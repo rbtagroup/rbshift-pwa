@@ -17,6 +17,7 @@ function App() {
     driverForm,
     drivers,
     driversMap,
+    enablePushNotifications,
     enrichedShifts,
     error,
     filters,
@@ -28,6 +29,7 @@ function App() {
     handleLogin,
     handleLogout,
     handleNotificationAction,
+    handleSaveNotificationPreferences,
     handleSaveAvailability,
     handleSaveDriver,
     handleSaveProfile,
@@ -42,7 +44,10 @@ function App() {
     loginPassword,
     message,
     mode,
+    inboxNotifications,
+    markNotificationRead,
     notifications,
+    notificationPreferences,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -176,8 +181,13 @@ function App() {
               activeTab={activeTab}
               currentDriver={currentDriver}
               dataLoading={dataLoading}
+              inboxNotifications={inboxNotifications}
               notifications={notifications}
+              notificationPreferences={notificationPreferences}
+              onEnablePush={enablePushNotifications}
               onNotificationAction={handleNotificationAction}
+              onNotificationPreferenceSave={handleSaveNotificationPreferences}
+              onNotificationRead={markNotificationRead}
               upcomingShift={upcomingShift}
               visibleShifts={visibleShifts}
               availability={availability}
@@ -195,8 +205,13 @@ function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               shifts={enrichedShifts}
+              inboxNotifications={inboxNotifications}
               notifications={notifications}
+              notificationPreferences={notificationPreferences}
+              onEnablePush={enablePushNotifications}
               onNotificationAction={handleNotificationAction}
+              onNotificationPreferenceSave={handleSaveNotificationPreferences}
+              onNotificationRead={markNotificationRead}
               todayShifts={todayShifts}
               problems={problems}
               stats={stats}

@@ -361,6 +361,10 @@ button:disabled {
   gap: 1rem;
 }
 
+.grid-2 .full-span {
+  grid-column: 1 / -1;
+}
+
 .grid-main {
   display: grid;
   grid-template-columns: 380px minmax(0, 1fr);

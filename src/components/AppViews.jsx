@@ -14,8 +14,13 @@ export function DriverView({
   activeTab,
   currentDriver,
   dataLoading,
+  inboxNotifications,
   notifications,
+  notificationPreferences,
+  onEnablePush,
   onNotificationAction,
+  onNotificationPreferenceSave,
+  onNotificationRead,
   upcomingShift,
   visibleShifts,
   availability,
@@ -90,7 +95,17 @@ export function DriverView({
   }
 
   if (activeTab === 'notifications') {
-    return <NotificationsSection notifications={notifications} onNotificationAction={onNotificationAction} />
+    return (
+      <NotificationsSection
+        inboxNotifications={inboxNotifications}
+        notifications={notifications}
+        notificationPreferences={notificationPreferences}
+        onEnablePush={onEnablePush}
+        onNotificationAction={onNotificationAction}
+        onNotificationPreferenceSave={onNotificationPreferenceSave}
+        onNotificationRead={onNotificationRead}
+      />
+    )
   }
 
   if (activeTab === 'availability') {
@@ -188,7 +203,12 @@ export function DispatcherView(props) {
     thisWeekShifts,
     onboardingItems,
     notifications,
+    notificationPreferences,
+    inboxNotifications,
+    onEnablePush,
     onNotificationAction,
+    onNotificationPreferenceSave,
+    onNotificationRead,
     drivers,
     vehicles,
     availability,
@@ -245,7 +265,17 @@ export function DispatcherView(props) {
   }
 
   if (activeTab === 'notifications') {
-    return <NotificationsSection notifications={notifications} onNotificationAction={onNotificationAction} />
+    return (
+      <NotificationsSection
+        inboxNotifications={inboxNotifications}
+        notifications={notifications}
+        notificationPreferences={notificationPreferences}
+        onEnablePush={onEnablePush}
+        onNotificationAction={onNotificationAction}
+        onNotificationPreferenceSave={onNotificationPreferenceSave}
+        onNotificationRead={onNotificationRead}
+      />
+    )
   }
 
   if (activeTab === 'shifts') {
@@ -650,30 +680,116 @@ function ProblemsSection({ onEditShift, problems }) {
   )
 }
 
-function NotificationsSection({ notifications, onNotificationAction }) {
+function NotificationsSection({
+  inboxNotifications,
+  notifications,
+  notificationPreferences,
+  onEnablePush,
+  onNotificationAction,
+  onNotificationPreferenceSave,
+  onNotificationRead,
+}) {
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div>
-          <h3>Notifikace</h3>
-          <p className="muted">Přehled akcí, upozornění a připomínek pro dnešní provoz.</p>
-        </div>
-      </div>
-      <div className="stack-md">
-        {notifications.length === 0 ? <EmptyState text="Momentálně tu nejsou žádné nové notifikace." /> : notifications.map((item) => (
-          <div className="list-card" key={item.id}>
-            <div>
-              <strong>{item.title}</strong>
-              <p>{item.description}</p>
-            </div>
-            <div className="button-row wrap">
-              <StatusPill tone={item.tone}>{item.tone === 'danger' ? 'Vysoká priorita' : item.tone === 'warning' ? 'Pozor' : 'Info'}</StatusPill>
-              {item.actionLabel ? <button className="ghost-button" onClick={() => onNotificationAction(item)}>{item.actionLabel}</button> : null}
-            </div>
+    <div className="grid-2">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Kanály a preference</h3>
+            <p className="muted">Nastav, jestli chceš push, e-mail nebo SMS. Kritické události můžeš omezit jen na důležité změny.</p>
           </div>
-        ))}
-      </div>
-    </section>
+        </div>
+        <div className="form-grid">
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.push_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, push_enabled: event.target.checked })}
+            />
+            Push notifikace
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.email_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, email_enabled: event.target.checked })}
+            />
+            E-mail notifikace
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.sms_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, sms_enabled: event.target.checked })}
+            />
+            SMS fallback
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.critical_only}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, critical_only: event.target.checked })}
+            />
+            Jen kritické externí notifikace
+          </label>
+          <label className="full-width">
+            Telefon pro SMS fallback
+            <input
+              value={notificationPreferences.phone_override ?? ''}
+              placeholder="např. +420777123456"
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, phone_override: event.target.value })}
+            />
+          </label>
+          <div className="button-row full-width">
+            <button className="primary-button" type="button" onClick={onEnablePush}>Povolit push v prohlížeči</button>
+          </div>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Živé upozornění</h3>
+            <p className="muted">Přehled akcí, upozornění a připomínek pro dnešní provoz.</p>
+          </div>
+        </div>
+        <div className="stack-md">
+          {notifications.length === 0 ? <EmptyState text="Momentálně tu nejsou žádné nové notifikace." /> : notifications.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+              </div>
+              <div className="button-row wrap">
+                <StatusPill tone={item.tone}>{item.tone === 'danger' ? 'Vysoká priorita' : item.tone === 'warning' ? 'Pozor' : 'Info'}</StatusPill>
+                {item.actionLabel ? <button className="ghost-button" onClick={() => onNotificationAction(item)}>{item.actionLabel}</button> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel full-span">
+        <div className="panel-header">
+          <div>
+            <h3>Doručené události</h3>
+            <p className="muted">Historie push/e-mail/SMS a interních notifikací pro tvůj účet.</p>
+          </div>
+        </div>
+        <div className="stack-md">
+          {inboxNotifications.length === 0 ? <EmptyState text="Zatím tu nejsou žádné doručené události." /> : inboxNotifications.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.body}</p>
+                <p className="muted">{formatDateTime(item.created_at)}</p>
+              </div>
+              <div className="button-row wrap">
+                <StatusPill tone={item.priority === 'critical' ? 'danger' : 'info'}>{item.priority === 'critical' ? 'Kritické' : 'Běžné'}</StatusPill>
+                {!item.read_at ? <button className="ghost-button" onClick={() => onNotificationRead(item.id)}>Označit jako přečtené</button> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }
 

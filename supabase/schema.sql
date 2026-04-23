@@ -70,6 +70,43 @@ create table if not exists public.change_log (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.notification_preferences (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  push_enabled boolean not null default false,
+  email_enabled boolean not null default true,
+  sms_enabled boolean not null default false,
+  critical_only boolean not null default false,
+  phone_override text,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+
+create table if not exists public.notification_events (
+  id text primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  shift_id uuid references public.shifts(id) on delete set null,
+  kind text not null,
+  priority text not null default 'normal' check (priority in ('normal', 'critical')),
+  title text not null,
+  body text not null,
+  delivery_channels jsonb not null default '[]'::jsonb,
+  delivery_results jsonb not null default '{}'::jsonb,
+  metadata jsonb,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.current_role()
 returns text
 language sql
@@ -101,6 +138,9 @@ alter table public.vehicles enable row level security;
 alter table public.shifts enable row level security;
 alter table public.driver_availability enable row level security;
 alter table public.change_log enable row level security;
+alter table public.notification_preferences enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.notification_events enable row level security;
 
 create policy "profiles_self_or_staff_select" on public.profiles
 for select using (
@@ -161,6 +201,38 @@ create policy "change_log_staff_all" on public.change_log
 for all using (public.current_role() in ('admin', 'dispatcher'))
 with check (public.current_role() in ('admin', 'dispatcher'));
 
+create policy "notification_preferences_self_select" on public.notification_preferences
+for select using (user_id = auth.uid());
+
+create policy "notification_preferences_self_insert" on public.notification_preferences
+for insert with check (user_id = auth.uid());
+
+create policy "notification_preferences_self_update" on public.notification_preferences
+for update using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create policy "push_subscriptions_self_select" on public.push_subscriptions
+for select using (user_id = auth.uid());
+
+create policy "push_subscriptions_self_insert" on public.push_subscriptions
+for insert with check (user_id = auth.uid());
+
+create policy "push_subscriptions_self_update" on public.push_subscriptions
+for update using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create policy "push_subscriptions_self_delete" on public.push_subscriptions
+for delete using (user_id = auth.uid());
+
+create policy "notification_events_self_select" on public.notification_events
+for select using (user_id = auth.uid());
+
+create policy "notification_events_self_update" on public.notification_events
+for update using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
 create index if not exists shifts_driver_time_idx on public.shifts(driver_id, start_at, end_at);
 create index if not exists shifts_vehicle_time_idx on public.shifts(vehicle_id, start_at, end_at);
 create index if not exists availability_driver_time_idx on public.driver_availability(driver_id, from_date, to_date);
+create index if not exists notification_events_user_created_idx on public.notification_events(user_id, created_at desc);
+create index if not exists push_subscriptions_user_idx on public.push_subscriptions(user_id);

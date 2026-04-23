@@ -68,6 +68,14 @@ export const DEFAULT_PROFILE_FORM = {
   auth_password: '',
 }
 
+export const DEFAULT_NOTIFICATION_PREFERENCES = {
+  push_enabled: false,
+  email_enabled: true,
+  sms_enabled: false,
+  critical_only: false,
+  phone_override: '',
+}
+
 export function loadDemoState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
