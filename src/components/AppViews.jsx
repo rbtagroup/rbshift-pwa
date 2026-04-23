@@ -516,7 +516,6 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, on
       <div className="panel-header">
         <div>
           <h3>{shiftForm.id ? 'Upravit směnu' : 'Nová směna'}</h3>
-          <p className="muted">Systém hlídá kolize řidičů, aut i servisních blokací.</p>
         </div>
       </div>
       <form className="form-grid" onSubmit={onSaveShift}>
@@ -656,7 +655,6 @@ function ProblemsSection({ onEditShift, problems }) {
       <div className="panel-header">
         <div>
           <h3>Problémové směny</h3>
-          <p className="muted">Čekající na potvrzení, odmítnuté nebo bez obsazení.</p>
         </div>
       </div>
       <div className="stack-md">

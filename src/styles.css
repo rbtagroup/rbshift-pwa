@@ -32,6 +32,8 @@
 html, body, #root {
   min-height: 100%;
   margin: 0;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -40,6 +42,7 @@ body {
 
 button, input, select, textarea {
   font: inherit;
+  max-width: 100%;
 }
 
 button {
@@ -55,6 +58,10 @@ input, select, textarea {
   padding: 0.85rem 0.95rem;
   outline: none;
   transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+input[type="datetime-local"] {
+  min-width: 0;
 }
 
 input:focus, select:focus, textarea:focus {
@@ -265,12 +272,18 @@ button:disabled {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 1rem;
+  align-items: start;
 }
 
 .sidebar {
   display: grid;
   gap: 0.8rem;
   align-content: start;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  min-width: 0;
 }
 
 .profile-card,
@@ -287,6 +300,7 @@ button:disabled {
 .profile-card {
   display: grid;
   gap: 0.2rem;
+  min-width: 0;
 }
 
 .profile-email {
@@ -319,19 +333,23 @@ button:disabled {
   gap: 1rem;
   align-content: start;
   position: relative;
+  min-width: 0;
 }
 
 .toast-stack {
-  position: sticky;
+  position: fixed;
   top: 1rem;
+  right: 1rem;
   z-index: 20;
   display: grid;
   gap: 0.75rem;
   justify-items: end;
+  width: min(360px, calc(100vw - 2rem));
+  pointer-events: none;
 }
 
 .toast-card {
-  width: min(420px, 100%);
+  width: 100%;
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -342,6 +360,7 @@ button:disabled {
   border-radius: 18px;
   padding: 0.9rem 1rem;
   box-shadow: var(--shadow);
+  pointer-events: auto;
 }
 
 .toast-card p {
@@ -375,6 +394,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  min-width: 0;
 }
 
 .grid-2 .full-span {
@@ -383,14 +403,16 @@ button:disabled {
 
 .grid-main {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
   gap: 1rem;
+  min-width: 0;
 }
 
 .report-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  min-width: 0;
 }
 
 .sticky-panel {
@@ -435,6 +457,7 @@ button:disabled {
   align-items: start;
   gap: 1rem;
   margin-bottom: 1rem;
+  min-width: 0;
 }
 
 .panel-header.wrap,
@@ -447,6 +470,7 @@ button:disabled {
   justify-content: space-between;
   gap: 1rem;
   align-items: start;
+  min-width: 0;
 }
 
 .form-grid,
@@ -454,10 +478,16 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem;
+  min-width: 0;
 }
 
 .form-grid .full-width {
   grid-column: 1 / -1;
+}
+
+.form-grid > *,
+.filters-grid > * {
+  min-width: 0;
 }
 
 .checkbox-row {
@@ -483,6 +513,7 @@ button:disabled {
 .button-row {
   display: flex;
   gap: 0.65rem;
+  min-width: 0;
 }
 
 .day-group {
@@ -504,6 +535,7 @@ button:disabled {
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(15, 23, 42, 0.56);
+  min-width: 0;
 }
 
 .list-card.compact {
@@ -586,7 +618,7 @@ button:disabled {
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 0.7rem;
+    padding: 0.55rem;
   }
 
   .topbar,
@@ -600,6 +632,9 @@ button:disabled {
 
   .sidebar {
     order: 2;
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .layout {
@@ -621,13 +656,13 @@ button:disabled {
   .hero-card,
   .stat-card,
   .auth-card {
-    border-radius: 20px;
-    padding: 0.85rem;
+    border-radius: 18px;
+    padding: 0.72rem;
   }
 
   .nav-button {
-    border-radius: 14px;
-    padding: 0.8rem 0.9rem;
+    border-radius: 13px;
+    padding: 0.72rem 0.82rem;
   }
 
   .content {
@@ -648,11 +683,28 @@ button:disabled {
   }
 
   .toast-stack {
-    position: static;
+    top: auto;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
     justify-items: stretch;
   }
 
   .toast-card {
     width: 100%;
+    border-radius: 16px;
+    padding: 0.8rem 0.9rem;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+
+  .list-card {
+    padding: 0.82rem 0.88rem;
   }
 }
