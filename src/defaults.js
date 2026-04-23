@@ -65,6 +65,7 @@ export const DEFAULT_PROFILE_FORM = {
   role: 'dispatcher',
   phone: '',
   active: true,
+  auth_password: '',
 }
 
 export function loadDemoState() {

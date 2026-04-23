@@ -5,12 +5,14 @@ import {
   driverStats,
   endOfDay,
   formatDate,
+  formatDateTime,
   generateId,
   generateUuid,
   getProblems,
   overlaps,
   startOfDay,
   toInputValue,
+  downloadCsv,
 } from '../utils'
 import { hasSupabaseConfig, supabase } from '../supabaseClient'
 import {
@@ -227,6 +229,21 @@ export function useShiftApp() {
 
     return [...groups.entries()]
   }, [calendarView, visibleShifts])
+
+  const thisWeekShifts = useMemo(() => {
+    const start = startOfDay(new Date())
+    const end = endOfDay(addDays(start, 6))
+    return enrichedShifts.filter((shift) => overlaps(shift.start_at, shift.end_at, start, end))
+  }, [enrichedShifts])
+
+  const onboardingItems = useMemo(() => {
+    return [
+      { id: 'profiles', label: 'Máte založené uživatele v Auth i Profiles', done: profiles.length > 0 },
+      { id: 'drivers', label: 'Máte aktivní řidiče', done: drivers.some((item) => item.active) },
+      { id: 'vehicles', label: 'Máte aktivní vozidla', done: vehicles.some((item) => item.status === 'active') },
+      { id: 'shifts', label: 'Máte naplánovanou alespoň jednu směnu', done: shifts.length > 0 },
+    ]
+  }, [drivers, profiles, shifts.length, vehicles])
 
   async function hydrateSupabaseUser(userId) {
     if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
@@ -679,9 +696,10 @@ export function useShiftApp() {
     const normalizedId = profileForm.id.trim()
     const normalizedName = profileForm.full_name.trim()
     const normalizedEmail = profileForm.email.trim().toLowerCase()
+    const normalizedPassword = profileForm.auth_password.trim()
 
-    if (!normalizedId) {
-      setFlash('error', 'Vyplň UUID uživatele z Auth -> Users.')
+    if (!normalizedId && !normalizedPassword) {
+      setFlash('error', 'Vyplň UUID uživatele z Auth -> Users, nebo zadej heslo pro vytvoření auth účtu.')
       setBusy(false)
       return
     }
@@ -701,8 +719,36 @@ export function useShiftApp() {
       return
     }
 
+    let profileId = normalizedId
+    if (!profileId && mode === 'demo') {
+      profileId = generateId('profile')
+    }
+
+    if (!profileId) {
+      const response = await fetch('/api/admin-auth-user', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({
+          action: 'create',
+          email: normalizedEmail,
+          password: normalizedPassword,
+        }),
+      })
+
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result?.user?.id) {
+        setFlash('error', result?.error ?? 'Nepodařilo se vytvořit auth účet.')
+        setBusy(false)
+        return
+      }
+      profileId = result.user.id
+    }
+
     const payload = {
-      id: normalizedId,
+      id: profileId,
       full_name: normalizedName,
       email: normalizedEmail,
       role: profileForm.role,
@@ -710,21 +756,21 @@ export function useShiftApp() {
       active: profileForm.active,
     }
 
-    const previous = profiles.find((item) => item.id === normalizedId) ?? null
+    const previous = profiles.find((item) => item.id === profileId) ?? null
 
     if (mode === 'demo') {
       setDemoState((current) => ({
         ...current,
         profiles: previous
-          ? current.profiles.map((item) => (item.id === normalizedId ? { ...item, ...payload } : item))
+          ? current.profiles.map((item) => (item.id === profileId ? { ...item, ...payload } : item))
           : [{ ...payload, created_at: new Date().toISOString() }, ...current.profiles],
       }))
-      if (normalizedId === profile?.id) {
+      if (profileId === profile?.id) {
         setProfile((current) => (current ? { ...current, ...payload } : current))
       }
       await appendLog({
         entity_type: 'profile',
-        entity_id: normalizedId,
+        entity_id: profileId,
         action: previous ? 'updated' : 'created',
         old_data: previous,
         new_data: payload,
@@ -743,7 +789,7 @@ export function useShiftApp() {
         role: payload.role,
         phone: payload.phone,
         active: payload.active,
-      }).eq('id', normalizedId)
+      }).eq('id', profileId)
       : supabase.from('profiles').insert([payload])
 
     const { error: saveError } = await query
@@ -753,12 +799,12 @@ export function useShiftApp() {
       return
     }
 
-    if (normalizedId === profile?.id) {
+    if (profileId === profile?.id) {
       setProfile((current) => (current ? { ...current, ...payload } : current))
     }
     await appendLog({
       entity_type: 'profile',
-      entity_id: normalizedId,
+      entity_id: profileId,
       action: previous ? 'updated' : 'created',
       old_data: previous,
       new_data: payload,
@@ -768,6 +814,168 @@ export function useShiftApp() {
     setProfileForm(DEFAULT_PROFILE_FORM)
     setFlash('success', previous ? 'Uživatel byl upraven.' : 'Uživatel byl vytvořen.')
     setBusy(false)
+  }
+
+  async function handleToggleProfileActive(item) {
+    setBusy(true)
+    const nextActive = !item.active
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        profiles: current.profiles.map((profileItem) => (
+          profileItem.id === item.id ? { ...profileItem, active: nextActive } : profileItem
+        )),
+      }))
+      if (item.id === profile?.id) {
+        setProfile((current) => (current ? { ...current, active: nextActive } : current))
+      }
+      await appendLog({ entity_type: 'profile', entity_id: item.id, action: nextActive ? 'reactivated' : 'deactivated', old_data: item, new_data: { ...item, active: nextActive }, user_id: profile?.id ?? null })
+      setFlash('success', nextActive ? 'Uživatel byl znovu aktivován.' : 'Uživatel byl deaktivován.')
+      setBusy(false)
+      return
+    }
+
+    const { error: saveError } = await supabase.from('profiles').update({ active: nextActive }).eq('id', item.id)
+    if (saveError) {
+      setFlash('error', saveError.message)
+      setBusy(false)
+      return
+    }
+    if (item.id === profile?.id) {
+      setProfile((current) => (current ? { ...current, active: nextActive } : current))
+    }
+    await appendLog({ entity_type: 'profile', entity_id: item.id, action: nextActive ? 'reactivated' : 'deactivated', old_data: item, new_data: { ...item, active: nextActive }, user_id: profile?.id ?? null })
+    await fetchSupabaseData()
+    setFlash('success', nextActive ? 'Uživatel byl znovu aktivován.' : 'Uživatel byl deaktivován.')
+    setBusy(false)
+  }
+
+  async function handleDeleteProfile(item) {
+    if (item.id === profile?.id) {
+      setFlash('error', 'Nelze smazat právě přihlášeného uživatele.')
+      return
+    }
+    if (!window.confirm(`Opravdu smazat uživatele ${item.full_name}?`)) return
+    setBusy(true)
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        profiles: current.profiles.filter((profileItem) => profileItem.id !== item.id),
+        drivers: current.drivers.map((driverItem) => (
+          driverItem.profile_id === item.id ? { ...driverItem, profile_id: null } : driverItem
+        )),
+      }))
+      await appendLog({ entity_type: 'profile', entity_id: item.id, action: 'deleted', old_data: item, new_data: null, user_id: profile?.id ?? null })
+      setFlash('success', 'Uživatel byl smazán.')
+      setBusy(false)
+      return
+    }
+
+    const response = await fetch('/api/admin-auth-user', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({
+        action: 'delete',
+        userId: item.id,
+      }),
+    })
+
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setFlash('error', result?.error ?? 'Nepodařilo se smazat auth účet.')
+      setBusy(false)
+      return
+    }
+
+    await appendLog({ entity_type: 'profile', entity_id: item.id, action: 'deleted', old_data: item, new_data: null, user_id: profile?.id ?? null })
+    await fetchSupabaseData()
+    setFlash('success', 'Uživatel byl smazán.')
+    setBusy(false)
+  }
+
+  async function handleToggleDriverActive(item) {
+    setBusy(true)
+    const nextActive = !item.active
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        drivers: current.drivers.map((driverItem) => (
+          driverItem.id === item.id ? { ...driverItem, active: nextActive } : driverItem
+        )),
+      }))
+      await appendLog({ entity_type: 'driver', entity_id: item.id, action: nextActive ? 'reactivated' : 'deactivated', old_data: item, new_data: { ...item, active: nextActive }, user_id: profile?.id ?? null })
+      setFlash('success', nextActive ? 'Řidič byl znovu aktivován.' : 'Řidič byl deaktivován.')
+      setBusy(false)
+      return
+    }
+
+    const { error: saveError } = await supabase.from('drivers').update({ active: nextActive }).eq('id', item.id)
+    if (saveError) {
+      setFlash('error', saveError.message)
+      setBusy(false)
+      return
+    }
+    await appendLog({ entity_type: 'driver', entity_id: item.id, action: nextActive ? 'reactivated' : 'deactivated', old_data: item, new_data: { ...item, active: nextActive }, user_id: profile?.id ?? null })
+    await fetchSupabaseData()
+    setFlash('success', nextActive ? 'Řidič byl znovu aktivován.' : 'Řidič byl deaktivován.')
+    setBusy(false)
+  }
+
+  async function handleDeleteDriver(item) {
+    if (!window.confirm(`Opravdu smazat řidiče ${item.display_name}?`)) return
+    setBusy(true)
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        drivers: current.drivers.filter((driverItem) => driverItem.id !== item.id),
+      }))
+      await appendLog({ entity_type: 'driver', entity_id: item.id, action: 'deleted', old_data: item, new_data: null, user_id: profile?.id ?? null })
+      setFlash('success', 'Řidič byl smazán.')
+      setBusy(false)
+      return
+    }
+
+    const { error: deleteError } = await supabase.from('drivers').delete().eq('id', item.id)
+    if (deleteError) {
+      setFlash('error', deleteError.message)
+      setBusy(false)
+      return
+    }
+    await appendLog({ entity_type: 'driver', entity_id: item.id, action: 'deleted', old_data: item, new_data: null, user_id: profile?.id ?? null })
+    await fetchSupabaseData()
+    setFlash('success', 'Řidič byl smazán.')
+    setBusy(false)
+  }
+
+  function handleExportShifts() {
+    const rows = visibleShifts.map((shift) => [
+      formatDateTime(shift.start_at),
+      formatDateTime(shift.end_at),
+      shift.driver?.display_name ?? '',
+      shift.vehicle?.plate ?? '',
+      shift.shift_type,
+      shift.status,
+      shift.driver_response,
+      shift.note ?? '',
+    ])
+    downloadCsv(`rbshift-smeny-${new Date().toISOString().slice(0, 10)}.csv`, [
+      'Zacatek',
+      'Konec',
+      'Ridic',
+      'Vozidlo',
+      'Typ',
+      'Stav',
+      'Reakce ridice',
+      'Poznamka',
+    ], rows)
+    setFlash('success', 'CSV export směn je připraven.')
   }
 
   async function handleLogin(event) {
@@ -913,6 +1121,7 @@ export function useShiftApp() {
       role: item.role,
       phone: item.phone ?? '',
       active: item.active,
+      auth_password: '',
     })
     setActiveTab('users')
   }
@@ -934,6 +1143,9 @@ export function useShiftApp() {
     filters,
     groupedCalendar,
     handleDeleteShift,
+    handleDeleteDriver,
+    handleDeleteProfile,
+    handleExportShifts,
     handleLogin,
     handleLogout,
     handleSaveAvailability,
@@ -942,6 +1154,8 @@ export function useShiftApp() {
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
+    handleToggleDriverActive,
+    handleToggleProfileActive,
     loading,
     loginAsDemoUser,
     loginEmail,
@@ -970,7 +1184,9 @@ export function useShiftApp() {
     setVehicleForm,
     shiftForm,
     stats,
+    thisWeekShifts,
     todayShifts,
+    onboardingItems,
     upcomingShift,
     vehicleForm,
     vehicles,

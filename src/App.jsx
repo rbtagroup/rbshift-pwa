@@ -22,6 +22,9 @@ function App() {
     filters,
     groupedCalendar,
     handleDeleteShift,
+    handleDeleteDriver,
+    handleDeleteProfile,
+    handleExportShifts,
     handleLogin,
     handleLogout,
     handleSaveAvailability,
@@ -30,6 +33,8 @@ function App() {
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
+    handleToggleDriverActive,
+    handleToggleProfileActive,
     loading,
     loginAsDemoUser,
     loginEmail,
@@ -57,12 +62,14 @@ function App() {
     setVehicleForm,
     shiftForm,
     stats,
+    thisWeekShifts,
     todayShifts,
     upcomingShift,
     vehicleForm,
     vehicles,
     vehiclesMap,
     visibleShifts,
+    onboardingItems,
   } = useShiftApp()
 
   const nav = profile?.role === 'driver'
@@ -169,6 +176,8 @@ function App() {
               todayShifts={todayShifts}
               problems={problems}
               stats={stats}
+              thisWeekShifts={thisWeekShifts}
+              onboardingItems={onboardingItems}
               drivers={drivers}
               vehicles={vehicles}
               availability={availability}
@@ -196,10 +205,15 @@ function App() {
               setProfileForm={setProfileForm}
               onSaveProfile={handleSaveProfile}
               onProfileEdit={openProfileForEdit}
+              onProfileDelete={handleDeleteProfile}
+              onProfileToggleActive={handleToggleProfileActive}
               driverForm={driverForm}
               setDriverForm={setDriverForm}
               onSaveDriver={handleSaveDriver}
               onDriverEdit={openDriverForEdit}
+              onDriverDelete={handleDeleteDriver}
+              onDriverToggleActive={handleToggleDriverActive}
+              onExportShifts={handleExportShifts}
               profiles={profiles}
               busy={busy}
               createDefaultShiftForm={createDefaultShiftForm}

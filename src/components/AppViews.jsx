@@ -153,6 +153,8 @@ export function DispatcherView(props) {
     todayShifts,
     problems,
     stats,
+    thisWeekShifts,
+    onboardingItems,
     drivers,
     vehicles,
     availability,
@@ -165,6 +167,7 @@ export function DispatcherView(props) {
     shiftForm,
     setShiftForm,
     onSaveShift,
+    onExportShifts,
     onDeleteShift,
     onEditShift,
     availabilityForm,
@@ -179,10 +182,14 @@ export function DispatcherView(props) {
     setProfileForm,
     onSaveProfile,
     onProfileEdit,
+    onProfileDelete,
+    onProfileToggleActive,
     driverForm,
     setDriverForm,
     onSaveDriver,
     onDriverEdit,
+    onDriverDelete,
+    onDriverToggleActive,
     profiles,
     busy,
     createDefaultShiftForm,
@@ -194,8 +201,11 @@ export function DispatcherView(props) {
       <DashboardSection
         shifts={shifts}
         stats={stats}
+        thisWeekShifts={thisWeekShifts}
         todayShifts={todayShifts}
         vehicles={vehicles}
+        onboardingItems={onboardingItems}
+        onExportShifts={onExportShifts}
       />
     )
   }
@@ -211,6 +221,7 @@ export function DispatcherView(props) {
         filters={filters}
         groupedCalendar={groupedCalendar}
         onDeleteShift={onDeleteShift}
+        onExportShifts={onExportShifts}
         onEditShift={onEditShift}
         onSaveShift={onSaveShift}
         setCalendarView={setCalendarView}
@@ -230,10 +241,12 @@ export function DispatcherView(props) {
     return (
       <DriversSection
         busy={busy}
+        onDriverDelete={onDriverDelete}
         driverForm={driverForm}
         drivers={drivers}
         onDriverEdit={onDriverEdit}
         onSaveDriver={onSaveDriver}
+        onToggleDriverActive={onDriverToggleActive}
         profiles={profiles}
         setDriverForm={setDriverForm}
       />
@@ -244,7 +257,9 @@ export function DispatcherView(props) {
     return (
       <ProfilesSection
         busy={busy}
+        onProfileDelete={onProfileDelete}
         onProfileEdit={onProfileEdit}
+        onProfileToggleActive={onProfileToggleActive}
         onSaveProfile={onSaveProfile}
         profileForm={profileForm}
         profiles={profiles}
@@ -283,7 +298,7 @@ export function DispatcherView(props) {
   return <HistorySection changeLog={changeLog} profiles={profiles} />
 }
 
-function DashboardSection({ shifts, stats, todayShifts, vehicles }) {
+function DashboardSection({ shifts, stats, thisWeekShifts, todayShifts, vehicles, onboardingItems, onExportShifts }) {
   return (
     <div className="stack-xl">
       <section className="stats-grid">
@@ -294,6 +309,28 @@ function DashboardSection({ shifts, stats, todayShifts, vehicles }) {
       </section>
 
       <div className="grid-2">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Rychlý start</h3>
+              <p className="muted">Krátký checklist, ať je onboarding nového dispečera i ostrý provoz přehledný.</p>
+            </div>
+            <StatusPill tone={onboardingItems.every((item) => item.done) ? 'success' : 'warning'}>
+              {onboardingItems.filter((item) => item.done).length}/{onboardingItems.length}
+            </StatusPill>
+          </div>
+          <div className="stack-md">
+            {onboardingItems.map((item) => (
+              <div className="list-card" key={item.id}>
+                <div>
+                  <strong>{item.label}</strong>
+                </div>
+                <StatusPill tone={item.done ? 'success' : 'warning'}>{item.done ? 'Hotovo' : 'Chybí'}</StatusPill>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -309,23 +346,51 @@ function DashboardSection({ shifts, stats, todayShifts, vehicles }) {
         <section className="panel">
           <div className="panel-header">
             <div>
-              <h3>Vytížení řidičů</h3>
-              <p className="muted">Souhrn podle počtu směn a hodin.</p>
+              <h3>Týdenní report</h3>
+              <p className="muted">Souhrn nejbližšího týdne a rychlý export pro sdílení.</p>
             </div>
+            <button className="ghost-button" onClick={onExportShifts}>Export CSV</button>
           </div>
-          <div className="stack-md">
-            {stats.map((item) => (
-              <div className="list-card" key={item.driver.id}>
-                <div>
-                  <strong>{item.driver.display_name}</strong>
-                  <p>{item.count} směn · {item.hours.toFixed(1)} h · noční {item.nights}×</p>
-                </div>
-                <StatusPill>{item.weekends} víkendy</StatusPill>
-              </div>
-            ))}
+          <div className="report-grid">
+            <div className="stat-card">
+              <span className="muted">Směny na 7 dní</span>
+              <strong>{thisWeekShifts.length}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="muted">Plánované hodiny</span>
+              <strong>{thisWeekShifts.reduce((acc, item) => acc + (new Date(item.end_at) - new Date(item.start_at)) / 3600000, 0).toFixed(1)} h</strong>
+            </div>
+            <div className="stat-card">
+              <span className="muted">Aktivní řidiči</span>
+              <strong>{stats.filter((item) => item.count > 0).length}</strong>
+            </div>
+            <div className="stat-card">
+              <span className="muted">Nepotvrzené směny</span>
+              <strong>{thisWeekShifts.filter((item) => item.driver_response === 'pending').length}</strong>
+            </div>
           </div>
         </section>
       </div>
+
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Vytížení řidičů</h3>
+            <p className="muted">Souhrn podle počtu směn a hodin.</p>
+          </div>
+        </div>
+        <div className="stack-md">
+          {stats.map((item) => (
+            <div className="list-card" key={item.driver.id}>
+              <div>
+                <strong>{item.driver.display_name}</strong>
+                <p>{item.count} směn · {item.hours.toFixed(1)} h · noční {item.nights}×</p>
+              </div>
+              <StatusPill>{item.weekends} víkendy</StatusPill>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -338,6 +403,7 @@ function ShiftsSection({
   filters,
   groupedCalendar,
   onDeleteShift,
+  onExportShifts,
   onEditShift,
   onSaveShift,
   setCalendarView,
@@ -363,6 +429,7 @@ function ShiftsSection({
         filters={filters}
         groupedCalendar={groupedCalendar}
         onDeleteShift={onDeleteShift}
+        onExportShifts={onExportShifts}
         onEditShift={onEditShift}
         setCalendarView={setCalendarView}
         setFilters={setFilters}
@@ -446,6 +513,7 @@ function ShiftCalendarPanel({
   filters,
   groupedCalendar,
   onDeleteShift,
+  onExportShifts,
   onEditShift,
   setCalendarView,
   setFilters,
@@ -463,6 +531,7 @@ function ShiftCalendarPanel({
             {['day', 'week', 'month'].map((view) => (
               <button key={view} className={cx('ghost-button', calendarView === view && 'active-pill')} onClick={() => setCalendarView(view)}>{view === 'day' ? 'Den' : view === 'week' ? 'Týden' : 'Měsíc'}</button>
             ))}
+            <button className="ghost-button" onClick={onExportShifts}>Export CSV</button>
           </div>
         </div>
 
@@ -543,7 +612,7 @@ function ProblemsSection({ onEditShift, problems }) {
   )
 }
 
-function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver, profiles, setDriverForm }) {
+function DriversSection({ busy, driverForm, drivers, onDriverDelete, onDriverEdit, onSaveDriver, onToggleDriverActive, profiles, setDriverForm }) {
   return (
     <div className="grid-2">
       <section className="panel">
@@ -597,8 +666,13 @@ function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver,
                 <strong>{item.display_name}</strong>
                 <p>{(item.preferred_shift_types ?? []).map((value) => SHIFT_TYPE_LABEL[value]).join(', ') || 'Bez preferencí'}</p>
                 <p className="muted">{item.note || 'Bez poznámky'}</p>
+                <p className="muted">{item.active ? 'Aktivní' : 'Neaktivní'}{item.profile_id ? ' · Napojen na profil' : ''}</p>
               </div>
-              <button className="ghost-button" onClick={() => onDriverEdit(item)}>Upravit</button>
+              <div className="button-row wrap">
+                <button className="ghost-button" onClick={() => onDriverEdit(item)}>Upravit</button>
+                <button className="ghost-button" onClick={() => onToggleDriverActive(item)}>{item.active ? 'Deaktivovat' : 'Aktivovat'}</button>
+                <button className="danger-button" onClick={() => onDriverDelete(item)}>Smazat</button>
+              </div>
             </div>
           ))}
         </div>
@@ -607,7 +681,7 @@ function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver,
   )
 }
 
-function ProfilesSection({ busy, onProfileEdit, onSaveProfile, profileForm, profiles, setProfileForm }) {
+function ProfilesSection({ busy, onProfileDelete, onProfileEdit, onProfileToggleActive, onSaveProfile, profileForm, profiles, setProfileForm }) {
   return (
     <div className="grid-2">
       <section className="panel">
@@ -642,6 +716,12 @@ function ProfilesSection({ busy, onProfileEdit, onSaveProfile, profileForm, prof
             Telefon
             <input value={profileForm.phone} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} />
           </label>
+          {!profileForm.id ? (
+            <label>
+              Dočasné heslo pro auth účet
+              <input type="password" value={profileForm.auth_password} onChange={(event) => setProfileForm((current) => ({ ...current, auth_password: event.target.value }))} placeholder="vyplň jen když chceš vytvořit i Auth účet" />
+            </label>
+          ) : null}
           <label className="checkbox-item">
             <input
               type="checkbox"
@@ -652,7 +732,7 @@ function ProfilesSection({ busy, onProfileEdit, onSaveProfile, profileForm, prof
           </label>
           <div className="button-row full-width">
             <button className="primary-button" disabled={busy}>Uložit uživatele</button>
-            <button className="ghost-button" type="button" onClick={() => setProfileForm({ id: '', full_name: '', email: '', role: 'dispatcher', phone: '', active: true })}>Nový uživatel</button>
+            <button className="ghost-button" type="button" onClick={() => setProfileForm({ id: '', full_name: '', email: '', role: 'dispatcher', phone: '', active: true, auth_password: '' })}>Nový uživatel</button>
           </div>
         </form>
       </section>
@@ -666,7 +746,11 @@ function ProfilesSection({ busy, onProfileEdit, onSaveProfile, profileForm, prof
                 <p>{item.email}</p>
                 <p className="muted">{ROLE_LABEL[item.role] ?? item.role} · {item.active ? 'Aktivní' : 'Neaktivní'}</p>
               </div>
-              <button className="ghost-button" onClick={() => onProfileEdit(item)}>Upravit</button>
+              <div className="button-row wrap">
+                <button className="ghost-button" onClick={() => onProfileEdit(item)}>Upravit</button>
+                <button className="ghost-button" onClick={() => onProfileToggleActive(item)}>{item.active ? 'Deaktivovat' : 'Aktivovat'}</button>
+                <button className="danger-button" onClick={() => onProfileDelete(item)}>Smazat</button>
+              </div>
             </div>
           ))}
         </div>
