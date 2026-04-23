@@ -1,6 +1,7 @@
 import {
   AVAILABILITY_LABEL,
   RESPONSE_LABEL,
+  ROLE_LABEL,
   SHIFT_TYPE_LABEL,
   STATUS_LABEL,
   cx,
@@ -174,6 +175,10 @@ export function DispatcherView(props) {
     setVehicleForm,
     onSaveVehicle,
     onVehicleEdit,
+    profileForm,
+    setProfileForm,
+    onSaveProfile,
+    onProfileEdit,
     driverForm,
     setDriverForm,
     onSaveDriver,
@@ -231,6 +236,19 @@ export function DispatcherView(props) {
         onSaveDriver={onSaveDriver}
         profiles={profiles}
         setDriverForm={setDriverForm}
+      />
+    )
+  }
+
+  if (activeTab === 'users') {
+    return (
+      <ProfilesSection
+        busy={busy}
+        onProfileEdit={onProfileEdit}
+        onSaveProfile={onSaveProfile}
+        profileForm={profileForm}
+        profiles={profiles}
+        setProfileForm={setProfileForm}
       />
     )
   }
@@ -581,6 +599,74 @@ function DriversSection({ busy, driverForm, drivers, onDriverEdit, onSaveDriver,
                 <p className="muted">{item.note || 'Bez poznámky'}</p>
               </div>
               <button className="ghost-button" onClick={() => onDriverEdit(item)}>Upravit</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function ProfilesSection({ busy, onProfileEdit, onSaveProfile, profileForm, profiles, setProfileForm }) {
+  return (
+    <div className="grid-2">
+      <section className="panel">
+        <h3>{profiles.some((item) => item.id === profileForm.id) ? 'Upravit uživatele' : 'Nový uživatel'}</h3>
+        <p className="muted">Auth účet musí nejdřív existovat v Supabase Authentication / Users. Tady spravuješ profil a roli v aplikaci.</p>
+        <form className="form-grid" onSubmit={onSaveProfile}>
+          <label>
+            UUID uživatele
+            <input
+              value={profileForm.id}
+              onChange={(event) => setProfileForm((current) => ({ ...current, id: event.target.value }))}
+              placeholder="např. 6f4cea4e-ec28-49c3-b774-a19360085e5f"
+            />
+          </label>
+          <label>
+            Jméno
+            <input value={profileForm.full_name} onChange={(event) => setProfileForm((current) => ({ ...current, full_name: event.target.value }))} />
+          </label>
+          <label>
+            E-mail
+            <input type="email" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} />
+          </label>
+          <label>
+            Role
+            <select value={profileForm.role} onChange={(event) => setProfileForm((current) => ({ ...current, role: event.target.value }))}>
+              <option value="admin">Admin</option>
+              <option value="dispatcher">Dispečer</option>
+              <option value="driver">Řidič</option>
+            </select>
+          </label>
+          <label>
+            Telefon
+            <input value={profileForm.phone} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} />
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={profileForm.active}
+              onChange={(event) => setProfileForm((current) => ({ ...current, active: event.target.checked }))}
+            />
+            Aktivní uživatel
+          </label>
+          <div className="button-row full-width">
+            <button className="primary-button" disabled={busy}>Uložit uživatele</button>
+            <button className="ghost-button" type="button" onClick={() => setProfileForm({ id: '', full_name: '', email: '', role: 'dispatcher', phone: '', active: true })}>Nový uživatel</button>
+          </div>
+        </form>
+      </section>
+      <section className="panel">
+        <h3>Seznam uživatelů</h3>
+        <div className="stack-md">
+          {profiles.length === 0 ? <EmptyState text="Zatím tu nejsou žádné profily." /> : profiles.map((item) => (
+            <div className="list-card" key={item.id}>
+              <div>
+                <strong>{item.full_name}</strong>
+                <p>{item.email}</p>
+                <p className="muted">{ROLE_LABEL[item.role] ?? item.role} · {item.active ? 'Aktivní' : 'Neaktivní'}</p>
+              </div>
+              <button className="ghost-button" onClick={() => onProfileEdit(item)}>Upravit</button>
             </div>
           ))}
         </div>

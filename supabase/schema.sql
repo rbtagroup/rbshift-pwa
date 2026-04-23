@@ -107,6 +107,13 @@ for select using (
   auth.uid() = id or public.current_role() in ('admin', 'dispatcher')
 );
 
+create policy "profiles_staff_insert" on public.profiles
+for insert with check (public.current_role() in ('admin', 'dispatcher'));
+
+create policy "profiles_staff_update" on public.profiles
+for update using (public.current_role() in ('admin', 'dispatcher'))
+with check (public.current_role() in ('admin', 'dispatcher'));
+
 create policy "profiles_self_update" on public.profiles
 for update using (auth.uid() = id)
 with check (auth.uid() = id);

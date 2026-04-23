@@ -26,6 +26,7 @@ function App() {
     handleLogout,
     handleSaveAvailability,
     handleSaveDriver,
+    handleSaveProfile,
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
@@ -37,10 +38,12 @@ function App() {
     mode,
     openAvailabilityForEdit,
     openDriverForEdit,
+    openProfileForEdit,
     openShiftForEdit,
     openVehicleForEdit,
     problems,
     profile,
+    profileForm,
     profiles,
     setActiveTab,
     setAvailabilityForm,
@@ -49,6 +52,7 @@ function App() {
     setFilters,
     setLoginEmail,
     setLoginPassword,
+    setProfileForm,
     setShiftForm,
     setVehicleForm,
     shiftForm,
@@ -71,6 +75,7 @@ function App() {
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'shifts', label: 'Směny' },
         { id: 'problems', label: 'Problémy' },
+        { id: 'users', label: 'Uživatelé' },
         { id: 'drivers', label: 'Řidiči' },
         { id: 'vehicles', label: 'Auta' },
         { id: 'availability', label: 'Nepřítomnosti' },
@@ -187,6 +192,10 @@ function App() {
               setVehicleForm={setVehicleForm}
               onSaveVehicle={handleSaveVehicle}
               onVehicleEdit={openVehicleForEdit}
+              profileForm={profileForm}
+              setProfileForm={setProfileForm}
+              onSaveProfile={handleSaveProfile}
+              onProfileEdit={openProfileForEdit}
               driverForm={driverForm}
               setDriverForm={setDriverForm}
               onSaveDriver={handleSaveDriver}

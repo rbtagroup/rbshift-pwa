@@ -58,6 +58,15 @@ export const DEFAULT_DRIVER_FORM = {
   active: true,
 }
 
+export const DEFAULT_PROFILE_FORM = {
+  id: '',
+  full_name: '',
+  email: '',
+  role: 'dispatcher',
+  phone: '',
+  active: true,
+}
+
 export function loadDemoState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

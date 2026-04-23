@@ -16,6 +16,7 @@ import { hasSupabaseConfig, supabase } from '../supabaseClient'
 import {
   DEFAULT_AVAILABILITY_FORM,
   DEFAULT_DRIVER_FORM,
+  DEFAULT_PROFILE_FORM,
   DEFAULT_SHIFT_FORM,
   DEFAULT_VEHICLE_FORM,
   DEMO_USER_KEY,
@@ -60,6 +61,7 @@ export function useShiftApp() {
   const [availabilityForm, setAvailabilityForm] = useState(DEFAULT_AVAILABILITY_FORM())
   const [vehicleForm, setVehicleForm] = useState(DEFAULT_VEHICLE_FORM)
   const [driverForm, setDriverForm] = useState(DEFAULT_DRIVER_FORM)
+  const [profileForm, setProfileForm] = useState(DEFAULT_PROFILE_FORM)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [filters, setFilters] = useState({
@@ -314,6 +316,7 @@ export function useShiftApp() {
     setAvailabilityForm(DEFAULT_AVAILABILITY_FORM())
     setVehicleForm(DEFAULT_VEHICLE_FORM)
     setDriverForm(DEFAULT_DRIVER_FORM)
+    setProfileForm(DEFAULT_PROFILE_FORM)
   }
 
   function validateShift(form) {
@@ -669,6 +672,104 @@ export function useShiftApp() {
     setBusy(false)
   }
 
+  async function handleSaveProfile(event) {
+    event.preventDefault()
+    setBusy(true)
+
+    const normalizedId = profileForm.id.trim()
+    const normalizedName = profileForm.full_name.trim()
+    const normalizedEmail = profileForm.email.trim().toLowerCase()
+
+    if (!normalizedId) {
+      setFlash('error', 'Vyplň UUID uživatele z Auth -> Users.')
+      setBusy(false)
+      return
+    }
+    if (!normalizedName) {
+      setFlash('error', 'Vyplň jméno uživatele.')
+      setBusy(false)
+      return
+    }
+    if (!normalizedEmail) {
+      setFlash('error', 'Vyplň e-mail uživatele.')
+      setBusy(false)
+      return
+    }
+    if (!['admin', 'dispatcher', 'driver'].includes(profileForm.role)) {
+      setFlash('error', 'Vyber platnou roli uživatele.')
+      setBusy(false)
+      return
+    }
+
+    const payload = {
+      id: normalizedId,
+      full_name: normalizedName,
+      email: normalizedEmail,
+      role: profileForm.role,
+      phone: profileForm.phone.trim() || null,
+      active: profileForm.active,
+    }
+
+    const previous = profiles.find((item) => item.id === normalizedId) ?? null
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        profiles: previous
+          ? current.profiles.map((item) => (item.id === normalizedId ? { ...item, ...payload } : item))
+          : [{ ...payload, created_at: new Date().toISOString() }, ...current.profiles],
+      }))
+      if (normalizedId === profile?.id) {
+        setProfile((current) => (current ? { ...current, ...payload } : current))
+      }
+      await appendLog({
+        entity_type: 'profile',
+        entity_id: normalizedId,
+        action: previous ? 'updated' : 'created',
+        old_data: previous,
+        new_data: payload,
+        user_id: profile?.id ?? null,
+      })
+      setProfileForm(DEFAULT_PROFILE_FORM)
+      setFlash('success', previous ? 'Uživatel byl upraven.' : 'Uživatel byl vytvořen.')
+      setBusy(false)
+      return
+    }
+
+    const query = previous
+      ? supabase.from('profiles').update({
+        full_name: payload.full_name,
+        email: payload.email,
+        role: payload.role,
+        phone: payload.phone,
+        active: payload.active,
+      }).eq('id', normalizedId)
+      : supabase.from('profiles').insert([payload])
+
+    const { error: saveError } = await query
+    if (saveError) {
+      setFlash('error', saveError.message)
+      setBusy(false)
+      return
+    }
+
+    if (normalizedId === profile?.id) {
+      setProfile((current) => (current ? { ...current, ...payload } : current))
+    }
+    await appendLog({
+      entity_type: 'profile',
+      entity_id: normalizedId,
+      action: previous ? 'updated' : 'created',
+      old_data: previous,
+      new_data: payload,
+      user_id: profile?.id ?? null,
+    })
+    await fetchSupabaseData()
+    setProfileForm(DEFAULT_PROFILE_FORM)
+    setFlash('success', previous ? 'Uživatel byl upraven.' : 'Uživatel byl vytvořen.')
+    setBusy(false)
+  }
+
   async function handleLogin(event) {
     event.preventDefault()
     if (mode === 'demo') {
@@ -804,6 +905,18 @@ export function useShiftApp() {
     setActiveTab('drivers')
   }
 
+  function openProfileForEdit(item) {
+    setProfileForm({
+      id: item.id,
+      full_name: item.full_name,
+      email: item.email,
+      role: item.role,
+      phone: item.phone ?? '',
+      active: item.active,
+    })
+    setActiveTab('users')
+  }
+
   return {
     activeTab,
     availability,
@@ -825,6 +938,7 @@ export function useShiftApp() {
     handleLogout,
     handleSaveAvailability,
     handleSaveDriver,
+    handleSaveProfile,
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
@@ -836,10 +950,12 @@ export function useShiftApp() {
     mode,
     openAvailabilityForEdit,
     openDriverForEdit,
+    openProfileForEdit,
     openShiftForEdit,
     openVehicleForEdit,
     problems,
     profile,
+    profileForm,
     profiles,
     session,
     setActiveTab,
@@ -849,6 +965,7 @@ export function useShiftApp() {
     setFilters,
     setLoginEmail,
     setLoginPassword,
+    setProfileForm,
     setShiftForm,
     setVehicleForm,
     shiftForm,
