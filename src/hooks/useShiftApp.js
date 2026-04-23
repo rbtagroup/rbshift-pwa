@@ -23,6 +23,8 @@ import {
 } from '../defaults'
 import { useFlash } from './useFlash'
 
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
+
 export function useShiftApp() {
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
@@ -62,30 +64,58 @@ export function useShiftApp() {
     }
 
     let mounted = true
+    const runAuthBootstrap = async () => {
+      try {
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => {
+            window.setTimeout(() => {
+              reject(new Error('Inicializace přihlášení trvá příliš dlouho. Zkontroluj připojení k Supabase a environment proměnné.'))
+            }, AUTH_BOOTSTRAP_TIMEOUT_MS)
+          }),
+        ])
 
-    supabase.auth.getSession().then(async ({ data, error: authError }) => {
-      if (!mounted) return
-      if (authError) {
-        setError(authError.message)
+        if (!mounted) return
+
+        const { data, error: authError } = sessionResult
+        if (authError) {
+          setError(authError.message)
+          setLoading(false)
+          return
+        }
+
+        setSession(data.session)
+        if (data.session) {
+          await hydrateSupabaseUser(data.session.user.id)
+          return
+        }
+
         setLoading(false)
-        return
-      }
-      setSession(data.session)
-      if (data.session) {
-        await hydrateSupabaseUser(data.session.user.id)
-      } else {
+      } catch (bootstrapError) {
+        if (!mounted) return
+        setProfile(null)
+        setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
         setLoading(false)
       }
-    })
+    }
+
+    runAuthBootstrap()
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      setSession(nextSession)
-      if (nextSession) {
-        await hydrateSupabaseUser(nextSession.user.id)
-      } else {
+      try {
+        setSession(nextSession)
+        if (nextSession) {
+          await hydrateSupabaseUser(nextSession.user.id)
+          return
+        }
+
         setProfile(null)
+        setLoading(false)
+      } catch (authStateError) {
+        setProfile(null)
+        setError(authStateError.message || 'Nepodařilo se obnovit přihlášení.')
         setLoading(false)
       }
     })
@@ -175,22 +205,28 @@ export function useShiftApp() {
   async function hydrateSupabaseUser(userId) {
     setLoading(true)
     setError('')
-    const { data: userProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
+    try {
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
 
-    if (profileError) {
-      setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
+      if (profileError) {
+        setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
+        setLoading(false)
+        return
+      }
+
+      setProfile(userProfile)
+      setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
+      await fetchSupabaseData()
+    } catch (profileLoadError) {
+      setProfile(null)
+      setError(profileLoadError.message || 'Načtení uživatelského profilu selhalo.')
+    } finally {
       setLoading(false)
-      return
     }
-
-    setProfile(userProfile)
-    setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
-    await fetchSupabaseData()
-    setLoading(false)
   }
 
   async function fetchSupabaseData() {
