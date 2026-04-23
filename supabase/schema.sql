@@ -142,6 +142,32 @@ alter table public.notification_preferences enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.notification_events enable row level security;
 
+drop policy if exists "profiles_self_or_staff_select" on public.profiles;
+drop policy if exists "profiles_staff_insert" on public.profiles;
+drop policy if exists "profiles_staff_update" on public.profiles;
+drop policy if exists "profiles_self_update" on public.profiles;
+drop policy if exists "drivers_staff_all" on public.drivers;
+drop policy if exists "drivers_driver_select_self" on public.drivers;
+drop policy if exists "vehicles_staff_all" on public.vehicles;
+drop policy if exists "vehicles_all_select" on public.vehicles;
+drop policy if exists "shifts_staff_all" on public.shifts;
+drop policy if exists "shifts_driver_select_self" on public.shifts;
+drop policy if exists "shifts_driver_update_response" on public.shifts;
+drop policy if exists "availability_staff_all" on public.driver_availability;
+drop policy if exists "availability_driver_select_self" on public.driver_availability;
+drop policy if exists "availability_driver_insert_self" on public.driver_availability;
+drop policy if exists "availability_driver_update_self" on public.driver_availability;
+drop policy if exists "change_log_staff_all" on public.change_log;
+drop policy if exists "notification_preferences_self_select" on public.notification_preferences;
+drop policy if exists "notification_preferences_self_insert" on public.notification_preferences;
+drop policy if exists "notification_preferences_self_update" on public.notification_preferences;
+drop policy if exists "push_subscriptions_self_select" on public.push_subscriptions;
+drop policy if exists "push_subscriptions_self_insert" on public.push_subscriptions;
+drop policy if exists "push_subscriptions_self_update" on public.push_subscriptions;
+drop policy if exists "push_subscriptions_self_delete" on public.push_subscriptions;
+drop policy if exists "notification_events_self_select" on public.notification_events;
+drop policy if exists "notification_events_self_update" on public.notification_events;
+
 create policy "profiles_self_or_staff_select" on public.profiles
 for select using (
   auth.uid() = id or public.current_role() in ('admin', 'dispatcher')
