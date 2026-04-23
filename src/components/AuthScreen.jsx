@@ -17,7 +17,7 @@ export function AuthScreen({
     <div className="app-shell auth-screen">
       <div className="auth-card">
         <div className="brand-block">
-          <div className="brand-icon">RB</div>
+          <img className="brand-icon brand-logo" src="/icons/icon-192.png" alt="RB Taxi logo" />
           <div>
             <h1>RBSHIFT</h1>
           </div>

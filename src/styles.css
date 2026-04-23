@@ -130,6 +130,13 @@ h1, h2, h3, p {
   letter-spacing: 0.08em;
 }
 
+.brand-logo {
+  object-fit: contain;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
 .eyebrow {
   color: var(--accent);
   text-transform: uppercase;
@@ -602,6 +609,11 @@ button:disabled {
   .topbar h1,
   .auth-card h1 {
     font-size: 2rem;
+  }
+
+  .brand-logo {
+    width: 64px;
+    height: 64px;
   }
 
   .profile-card,
