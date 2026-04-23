@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AVAILABILITY_LABEL,
   addDays,
@@ -24,6 +24,7 @@ import {
 import { useFlash } from './useFlash'
 
 export function useShiftApp() {
+  const hydrationRef = useRef({ userId: null, promise: null })
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -62,39 +63,10 @@ export function useShiftApp() {
     }
 
     let mounted = true
-    const runAuthBootstrap = async () => {
-      try {
-        const sessionResult = await supabase.auth.getSession()
-
-        if (!mounted) return
-
-        const { data, error: authError } = sessionResult
-        if (authError) {
-          setError(authError.message)
-          setLoading(false)
-          return
-        }
-
-        setSession(data.session)
-        if (data.session) {
-          await hydrateSupabaseUser(data.session.user.id)
-          return
-        }
-
-        setLoading(false)
-      } catch (bootstrapError) {
-        if (!mounted) return
-        setProfile(null)
-        setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
-        setLoading(false)
-      }
-    }
-
-    runAuthBootstrap()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       try {
         setSession(nextSession)
         if (nextSession) {
@@ -103,6 +75,9 @@ export function useShiftApp() {
         }
 
         setProfile(null)
+        if (event !== 'SIGNED_OUT') {
+          setError('')
+        }
         setLoading(false)
       } catch (authStateError) {
         setProfile(null)
@@ -194,32 +169,44 @@ export function useShiftApp() {
   }, [calendarView, visibleShifts])
 
   async function hydrateSupabaseUser(userId) {
+    if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
+      return hydrationRef.current.promise
+    }
+
     setLoading(true)
     setError('')
-    try {
-      const { data: userProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
+    const hydrationPromise = (async () => {
+      try {
+        const { data: userProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single()
 
-      if (profileError) {
-        setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
-        setLoading(false)
+        if (profileError) {
+          setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
+          setLoading(false)
+          return false
+        }
+
+        setProfile(userProfile)
+        setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
+        await fetchSupabaseData()
+        return true
+      } catch (profileLoadError) {
+        setProfile(null)
+        setError(profileLoadError.message || 'Načtení uživatelského profilu selhalo.')
         return false
+      } finally {
+        if (hydrationRef.current.userId === userId) {
+          hydrationRef.current = { userId: null, promise: null }
+        }
+        setLoading(false)
       }
+    })()
 
-      setProfile(userProfile)
-      setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
-      await fetchSupabaseData()
-      return true
-    } catch (profileLoadError) {
-      setProfile(null)
-      setError(profileLoadError.message || 'Načtení uživatelského profilu selhalo.')
-      return false
-    } finally {
-      setLoading(false)
-    }
+    hydrationRef.current = { userId, promise: hydrationPromise }
+    return hydrationPromise
   }
 
   async function fetchSupabaseData() {
