@@ -302,6 +302,47 @@ button:disabled {
   display: grid;
   gap: 1rem;
   align-content: start;
+  position: relative;
+}
+
+.toast-stack {
+  position: sticky;
+  top: 1rem;
+  z-index: 20;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: end;
+}
+
+.toast-card {
+  width: min(420px, 100%);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  background: rgba(11, 18, 32, 0.96);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 18px;
+  padding: 0.9rem 1rem;
+  box-shadow: var(--shadow);
+}
+
+.toast-card p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+}
+
+.toast-success { border-left-color: var(--success); }
+.toast-warning { border-left-color: var(--warning); }
+.toast-danger { border-left-color: var(--danger); }
+.toast-info { border-left-color: var(--info); }
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 0;
 }
 
 .stack-xl,

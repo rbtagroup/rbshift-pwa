@@ -52,6 +52,7 @@ function App() {
     profile,
     profileForm,
     profiles,
+    popupNotifications,
     setActiveTab,
     setAvailabilityForm,
     setCalendarView,
@@ -73,6 +74,7 @@ function App() {
     vehiclesMap,
     visibleShifts,
     onboardingItems,
+    dismissPopup,
   } = useShiftApp()
 
   const nav = profile?.role === 'driver'
@@ -155,6 +157,19 @@ function App() {
           {error && <div className="banner error">{error}</div>}
           {message && <div className="banner success">{message}</div>}
           {dataLoading && <div className="banner">Synchronizuji data ze Supabase…</div>}
+          {popupNotifications.length > 0 ? (
+            <div className="toast-stack" aria-live="polite">
+              {popupNotifications.map((item) => (
+                <div key={item.id} className={cx('toast-card', `toast-${item.tone ?? 'info'}`)}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.description}</p>
+                  </div>
+                  <button className="toast-close" onClick={() => dismissPopup(item.id)}>Zavřít</button>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {profile.role === 'driver' ? (
             <DriverView

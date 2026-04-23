@@ -28,6 +28,8 @@ import {
 import { useFlash } from './useFlash'
 
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
+const POPUP_TTL_MS = 9000
+const LIVE_REFRESH_INTERVAL_MS = 20000
 
 function withTimeout(promise, message) {
   let timeoutId = null
@@ -48,14 +50,23 @@ function isInvalidDate(value) {
   return Number.isNaN(new Date(value).getTime())
 }
 
+function appendShiftNote(note, text) {
+  const trimmedNote = note?.trim() ?? ''
+  return trimmedNote ? `${trimmedNote}\n${text}` : text
+}
+
 export function useShiftApp() {
   const hydrationRef = useRef({ userId: null, promise: null })
+  const popupTimersRef = useRef(new Map())
+  const driverShiftSnapshotRef = useRef(null)
+  const staffLogSnapshotRef = useRef(null)
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [dataLoading, setDataLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [popupNotifications, setPopupNotifications] = useState([])
   const { message, error, setMessage, setError, setFlash } = useFlash()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [calendarView, setCalendarView] = useState('week')
@@ -339,6 +350,29 @@ export function useShiftApp() {
 
   const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length || notifications.length
 
+  function dismissPopup(id) {
+    const timeoutId = popupTimersRef.current.get(id)
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      popupTimersRef.current.delete(id)
+    }
+    setPopupNotifications((current) => current.filter((item) => item.id !== id))
+  }
+
+  function pushPopup(popup) {
+    const id = generateId('popup')
+    setPopupNotifications((current) => [...current.filter((item) => item.title !== popup.title || item.description !== popup.description), { ...popup, id }].slice(-4))
+    const timeoutId = window.setTimeout(() => dismissPopup(id), POPUP_TTL_MS)
+    popupTimersRef.current.set(id, timeoutId)
+  }
+
+  useEffect(() => {
+    return () => {
+      popupTimersRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
+      popupTimersRef.current.clear()
+    }
+  }, [])
+
   async function hydrateSupabaseUser(userId) {
     if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
       return hydrationRef.current.promise
@@ -382,8 +416,148 @@ export function useShiftApp() {
     return hydrationPromise
   }
 
-  async function fetchSupabaseData(currentProfile = profile) {
-    setDataLoading(true)
+  useEffect(() => {
+    if (mode !== 'supabase' || !profile?.id) return
+
+    const intervalId = window.setInterval(() => {
+      if (document.hidden) return
+      fetchSupabaseData(profile, { silent: true })
+    }, LIVE_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [mode, profile?.id, profile?.role])
+
+  useEffect(() => {
+    if (mode !== 'supabase' || profile?.role !== 'driver') {
+      driverShiftSnapshotRef.current = null
+      return
+    }
+
+    const relevantShifts = visibleShifts
+      .filter((shift) => new Date(shift.end_at).getTime() >= Date.now())
+      .map((shift) => ({
+        id: shift.id,
+        start_at: shift.start_at,
+        end_at: shift.end_at,
+        status: shift.status,
+        driver_response: shift.driver_response,
+        vehicle_id: shift.vehicle_id,
+        vehicle_plate: shift.vehicle?.plate ?? 'bez auta',
+      }))
+
+    const currentMap = new Map(relevantShifts.map((shift) => [shift.id, shift]))
+    const previousMap = driverShiftSnapshotRef.current
+
+    if (!previousMap) {
+      driverShiftSnapshotRef.current = currentMap
+      return
+    }
+
+    for (const shift of relevantShifts) {
+      const previous = previousMap.get(shift.id)
+      if (!previous) {
+        pushPopup({
+          tone: 'info',
+          title: 'Přišla ti nová směna',
+          description: `${formatDateTime(shift.start_at)} · ${shift.vehicle_plate}`,
+        })
+        continue
+      }
+
+      if (previous.status !== shift.status && shift.status === 'cancelled') {
+        pushPopup({
+          tone: 'danger',
+          title: 'Směna byla zrušena',
+          description: `${formatDateTime(shift.start_at)} · ${shift.vehicle_plate}`,
+        })
+        continue
+      }
+
+      if (
+        previous.start_at !== shift.start_at ||
+        previous.end_at !== shift.end_at ||
+        previous.vehicle_id !== shift.vehicle_id
+      ) {
+        pushPopup({
+          tone: 'warning',
+          title: 'Směna byla upravena',
+          description: `${formatDateTime(shift.start_at)} · ${shift.vehicle_plate}`,
+        })
+      }
+    }
+
+    for (const previous of previousMap.values()) {
+      if (!currentMap.has(previous.id)) {
+        pushPopup({
+          tone: 'danger',
+          title: 'Směna už není přiřazená',
+          description: `${formatDateTime(previous.start_at)} · ${previous.vehicle_plate}`,
+        })
+      }
+    }
+
+    driverShiftSnapshotRef.current = currentMap
+  }, [mode, profile?.role, visibleShifts])
+
+  useEffect(() => {
+    if (mode !== 'supabase' || !['admin', 'dispatcher'].includes(profile?.role ?? '')) {
+      staffLogSnapshotRef.current = null
+      return
+    }
+
+    const currentIds = new Set(changeLog.map((item) => item.id))
+    const previousIds = staffLogSnapshotRef.current
+
+    if (!previousIds) {
+      staffLogSnapshotRef.current = currentIds
+      return
+    }
+
+    changeLog
+      .filter((item) => !previousIds.has(item.id))
+      .reverse()
+      .forEach((item) => {
+        if (item.entity_type !== 'shift' || item.user_id === profile?.id) return
+
+        const actor = profiles.find((candidate) => candidate.id === item.user_id)?.full_name ?? 'Řidič'
+        const nextData = item.new_data ?? {}
+        const shift = enrichedShifts.find((candidate) => candidate.id === item.entity_id)
+        const startAt = shift?.start_at ?? nextData.start_at
+        const plate = shift?.vehicle?.plate ?? 'bez auta'
+
+        if (item.action === 'response') {
+          pushPopup({
+            tone: nextData.driver_response === 'accepted' ? 'success' : 'warning',
+            title: nextData.driver_response === 'accepted' ? 'Řidič potvrdil směnu' : 'Řidič odmítl směnu',
+            description: `${actor} · ${startAt ? formatDateTime(startAt) : 'čas směny'} · ${plate}`,
+          })
+        }
+
+        if (item.action === 'driver_release') {
+          pushPopup({
+            tone: 'danger',
+            title: 'Řidič zrušil účast na směně',
+            description: `${actor} · ${startAt ? formatDateTime(startAt) : 'čas směny'} · ${plate}`,
+          })
+        }
+
+        if (item.action === 'driver_offer') {
+          pushPopup({
+            tone: 'warning',
+            title: 'Řidič nabízí směnu k přeobsazení',
+            description: `${actor} · ${startAt ? formatDateTime(startAt) : 'čas směny'} · ${plate}`,
+          })
+        }
+      })
+
+    staffLogSnapshotRef.current = currentIds
+  }, [changeLog, enrichedShifts, mode, profile?.id, profile?.role, profiles])
+
+  async function fetchSupabaseData(currentProfile = profile, options = {}) {
+    const { silent = false } = options
+    if (!silent) {
+      setDataLoading(true)
+    }
     try {
       const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
       const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes] = await withTimeout(
@@ -421,7 +595,9 @@ export function useShiftApp() {
       setError(dataLoadError.message || 'Načtení provozních dat selhalo.')
       return false
     } finally {
-      setDataLoading(false)
+      if (!silent) {
+        setDataLoading(false)
+      }
     }
   }
 
@@ -584,21 +760,63 @@ export function useShiftApp() {
 
   async function handleShiftResponse(shift, response) {
     setBusy(true)
-    const nextStatus = response === 'accepted' ? 'confirmed' : 'replacement_needed'
-    const patch = {
-      driver_response: response,
-      status: nextStatus,
-      updated_by: profile?.id ?? null,
-      updated_at: new Date().toISOString(),
-    }
+    const now = new Date().toISOString()
+
+    const actionConfig = response === 'accepted'
+      ? {
+          patch: {
+            driver_response: 'accepted',
+            status: 'confirmed',
+            updated_by: profile?.id ?? null,
+            updated_at: now,
+          },
+          logAction: 'response',
+          successMessage: 'Směna potvrzena.',
+        }
+      : response === 'declined'
+        ? {
+            patch: {
+              driver_response: 'declined',
+              status: 'replacement_needed',
+              updated_by: profile?.id ?? null,
+              updated_at: now,
+            },
+            logAction: 'response',
+            successMessage: 'Směna odmítnuta a označena pro záskok.',
+          }
+        : response === 'release'
+          ? {
+              patch: {
+                driver_response: 'declined',
+                status: 'replacement_needed',
+                note: appendShiftNote(shift.note, `[${formatDateTime(now)}] Řidič zrušil už potvrzenou směnu a požádal o přeobsazení.`),
+                updated_by: profile?.id ?? null,
+                updated_at: now,
+              },
+              logAction: 'driver_release',
+              successMessage: 'Dispečink byl upozorněn, že rušíš účast na směně.',
+            }
+          : {
+              patch: {
+                driver_response: 'declined',
+                status: 'replacement_needed',
+                note: appendShiftNote(shift.note, `[${formatDateTime(now)}] Řidič nabídl směnu k přeobsazení.`),
+                updated_by: profile?.id ?? null,
+                updated_at: now,
+              },
+              logAction: 'driver_offer',
+              successMessage: 'Dispečink byl upozorněn, že směna je nabídnutá k přeobsazení.',
+            }
+
+    const patch = actionConfig.patch
 
     if (mode === 'demo') {
       setDemoState((current) => ({
         ...current,
         shifts: current.shifts.map((item) => (item.id === shift.id ? { ...item, ...patch } : item)),
       }))
-      await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'response', old_data: shift, new_data: patch, user_id: profile?.id ?? null })
-      setFlash('success', response === 'accepted' ? 'Směna potvrzena.' : 'Směna odmítnuta a označena pro záskok.')
+      await appendLog({ entity_type: 'shift', entity_id: shift.id, action: actionConfig.logAction, old_data: shift, new_data: patch, user_id: profile?.id ?? null })
+      setFlash('success', actionConfig.successMessage)
       setBusy(false)
       return
     }
@@ -609,9 +827,9 @@ export function useShiftApp() {
       setBusy(false)
       return
     }
-    await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'response', old_data: shift, new_data: patch, user_id: profile?.id ?? null })
+    await appendLog({ entity_type: 'shift', entity_id: shift.id, action: actionConfig.logAction, old_data: shift, new_data: patch, user_id: profile?.id ?? null })
     await fetchSupabaseData()
-    setFlash('success', response === 'accepted' ? 'Směna potvrzena.' : 'Směna odmítnuta a označena pro záskok.')
+    setFlash('success', actionConfig.successMessage)
     setBusy(false)
   }
 
@@ -1261,6 +1479,7 @@ export function useShiftApp() {
     changeLog,
     currentDriver,
     dataLoading,
+    dismissPopup,
     driverForm,
     drivers,
     driversMap,
@@ -1299,6 +1518,7 @@ export function useShiftApp() {
     profile,
     profileForm,
     profiles,
+    popupNotifications,
     session,
     setActiveTab,
     setAvailabilityForm,

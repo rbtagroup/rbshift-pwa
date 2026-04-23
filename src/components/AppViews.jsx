@@ -60,6 +60,11 @@ export function DriverView({
                   <button className="primary-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
                   <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
                 </div>
+              ) : upcomingShift.driver_response === 'accepted' && upcomingShift.status === 'confirmed' ? (
+                <div className="button-row">
+                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'offer')}>Nabídnout kolegům</button>
+                  <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'release')}>Zrušit účast</button>
+                </div>
               ) : (
                 <p className="muted">
                   {upcomingShift.driver_response === 'accepted'
@@ -157,6 +162,11 @@ export function DriverView({
                 <div className="button-row">
                   <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
                   <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
+                </div>
+              ) : shift.driver_response === 'accepted' && shift.status === 'confirmed' ? (
+                <div className="button-row">
+                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout kolegům</button>
+                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
                 </div>
               ) : null}
             </div>
