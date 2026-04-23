@@ -23,6 +23,8 @@ import {
 } from '../defaults'
 import { useFlash } from './useFlash'
 
+const INITIAL_AUTH_FALLBACK_MS = 2500
+
 export function useShiftApp() {
   const hydrationRef = useRef({ userId: null, promise: null })
   const bootstrapResolvedRef = useRef(false)
@@ -65,6 +67,10 @@ export function useShiftApp() {
 
     let mounted = true
     bootstrapResolvedRef.current = false
+    const fallbackTimer = window.setTimeout(() => {
+      if (!mounted || bootstrapResolvedRef.current) return
+      setLoading(false)
+    }, INITIAL_AUTH_FALLBACK_MS)
 
     const resolveBootstrap = async (nextSession, { clearError = true } = {}) => {
       if (!mounted || bootstrapResolvedRef.current) return
@@ -125,6 +131,7 @@ export function useShiftApp() {
 
     return () => {
       mounted = false
+      window.clearTimeout(fallbackTimer)
       subscription.unsubscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
