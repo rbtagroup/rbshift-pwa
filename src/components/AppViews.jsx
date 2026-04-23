@@ -55,10 +55,20 @@ export function DriverView({
               <InfoRow label="Auto" value={`${upcomingShift.vehicle?.name ?? '—'} · ${upcomingShift.vehicle?.plate ?? '—'}`} />
               <InfoRow label="Stav směny" value={STATUS_LABEL[upcomingShift.status]} />
               <InfoRow label="Poznámka" value={upcomingShift.note || 'Bez poznámky'} />
-              <div className="button-row">
-                <button className="primary-button" disabled={busy || upcomingShift.driver_response === 'accepted'} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
-                <button className="danger-button" disabled={busy || upcomingShift.driver_response === 'declined'} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
-              </div>
+              {upcomingShift.driver_response === 'pending' ? (
+                <div className="button-row">
+                  <button className="primary-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
+                  <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
+                </div>
+              ) : (
+                <p className="muted">
+                  {upcomingShift.driver_response === 'accepted'
+                    ? 'Tato směna už je potvrzená.'
+                    : upcomingShift.driver_response === 'declined'
+                      ? 'Tato směna byla odmítnutá a čeká na další řešení.'
+                      : 'Na této směně není potřeba další akce.'}
+                </p>
+              )}
             </section>
             <section className="panel">
               <h3>Další směny</h3>
