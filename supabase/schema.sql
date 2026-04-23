@@ -74,6 +74,8 @@ create or replace function public.current_role()
 returns text
 language sql
 stable
+security definer
+set search_path = public, auth
 as $$
   select role from public.profiles where id = auth.uid();
 $$;
@@ -82,9 +84,16 @@ create or replace function public.current_driver_id()
 returns uuid
 language sql
 stable
+security definer
+set search_path = public, auth
 as $$
   select id from public.drivers where profile_id = auth.uid() limit 1;
 $$;
+
+revoke all on function public.current_role() from public;
+revoke all on function public.current_driver_id() from public;
+grant execute on function public.current_role() to authenticated;
+grant execute on function public.current_driver_id() to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.drivers enable row level security;
