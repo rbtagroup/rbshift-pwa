@@ -725,7 +725,7 @@ function ProfilesSection({ busy, onProfileDelete, onProfileEdit, onProfileToggle
     <div className="grid-2">
       <section className="panel">
         <h3>{profiles.some((item) => item.id === profileForm.id) ? 'Upravit uživatele' : 'Nový uživatel'}</h3>
-        <p className="muted">Auth účet musí nejdřív existovat v Supabase Authentication / Users. Tady spravuješ profil a roli v aplikaci.</p>
+        <p className="muted">Když necháš UUID prázdné a vyplníš dočasné heslo, aplikace vytvoří auth účet i aplikační profil sama. U role řidič navíc rovnou založí i navázaný řidičský záznam.</p>
         <form className="form-grid" onSubmit={onSaveProfile}>
           <label>
             UUID uživatele

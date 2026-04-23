@@ -879,19 +879,21 @@ export function useShiftApp() {
       return
     }
 
-    const query = previous
-      ? supabase.from('profiles').update({
-        full_name: payload.full_name,
-        email: payload.email,
-        role: payload.role,
-        phone: payload.phone,
-        active: payload.active,
-      }).eq('id', profileId)
-      : supabase.from('profiles').insert([payload])
+    const response = await fetch('/api/admin-auth-user', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({
+        action: 'upsert-profile',
+        profile: payload,
+      }),
+    })
 
-    const { error: saveError } = await query
-    if (saveError) {
-      setFlash('error', saveError.message)
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setFlash('error', result?.error ?? 'Nepodařilo se uložit profil uživatele.')
       setBusy(false)
       return
     }
@@ -933,9 +935,22 @@ export function useShiftApp() {
       return
     }
 
-    const { error: saveError } = await supabase.from('profiles').update({ active: nextActive }).eq('id', item.id)
-    if (saveError) {
-      setFlash('error', saveError.message)
+    const response = await fetch('/api/admin-auth-user', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({
+        action: 'set-profile-active',
+        userId: item.id,
+        active: nextActive,
+      }),
+    })
+
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      setFlash('error', result?.error ?? 'Nepodařilo se změnit stav uživatele.')
       setBusy(false)
       return
     }
