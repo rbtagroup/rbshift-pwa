@@ -32,6 +32,7 @@ import { useFlash } from './useFlash'
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
 const POPUP_TTL_MS = 9000
 const LIVE_REFRESH_INTERVAL_MS = 20000
+const NOTIFICATION_RECENT_DAYS = 7
 
 function withTimeout(promise, message) {
   let timeoutId = null
@@ -79,6 +80,7 @@ export function useShiftApp() {
   const [profileForm, setProfileForm] = useState(DEFAULT_PROFILE_FORM)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [notificationHistoryFilter, setNotificationHistoryFilter] = useState('recent')
   const [filters, setFilters] = useState({
     driverId: '',
     vehicleId: '',
@@ -187,6 +189,16 @@ export function useShiftApp() {
   const inboxNotifications = notificationEvents
     .filter((item) => !profile || item.user_id === profile.id)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const recentNotificationCutoff = Date.now() - NOTIFICATION_RECENT_DAYS * 24 * 60 * 60 * 1000
+  const relevantInboxNotifications = inboxNotifications.filter((item) => (
+    !item.read_at &&
+    new Date(item.created_at).getTime() >= recentNotificationCutoff
+  ))
+  const visibleInboxNotifications = notificationHistoryFilter === 'all'
+    ? inboxNotifications
+    : notificationHistoryFilter === 'unread'
+      ? inboxNotifications.filter((item) => !item.read_at)
+      : inboxNotifications.filter((item) => new Date(item.created_at).getTime() >= recentNotificationCutoff)
 
   const driversMap = useMemo(() => Object.fromEntries(drivers.map((item) => [item.id, item])), [drivers])
   const vehiclesMap = useMemo(() => Object.fromEntries(vehicles.map((item) => [item.id, item])), [vehicles])
@@ -380,7 +392,7 @@ export function useShiftApp() {
   }, [currentDriver, onboardingItems, problems, profile, replacementOffers, vehicles, visibleShifts])
 
   const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length
-    + inboxNotifications.filter((item) => !item.read_at).length
+    + relevantInboxNotifications.length
 
   function dismissPopup(id) {
     const timeoutId = popupTimersRef.current.get(id)
@@ -1809,6 +1821,7 @@ export function useShiftApp() {
     message,
     mode,
     notifications,
+    notificationHistoryFilter,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -1827,6 +1840,7 @@ export function useShiftApp() {
     setCalendarView,
     setDriverForm,
     setFilters,
+    setNotificationHistoryFilter,
     setLoginEmail,
     setLoginPassword,
     setProfileForm,
@@ -1844,6 +1858,7 @@ export function useShiftApp() {
     vehicles,
     vehiclesMap,
     visibleShifts,
+    visibleInboxNotifications,
     createDefaultShiftForm: DEFAULT_SHIFT_FORM,
   }
 }

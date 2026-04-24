@@ -48,6 +48,7 @@ function App() {
     message,
     mode,
     inboxNotifications,
+    notificationHistoryFilter,
     markNotificationRead,
     notifications,
     notificationPreferences,
@@ -69,6 +70,7 @@ function App() {
     setFilters,
     setLoginEmail,
     setLoginPassword,
+    setNotificationHistoryFilter,
     setProfileForm,
     setShiftForm,
     setVehicleForm,
@@ -82,6 +84,7 @@ function App() {
     vehicles,
     vehiclesMap,
     visibleShifts,
+    visibleInboxNotifications,
     onboardingItems,
     dismissPopup,
   } = useShiftApp()
@@ -232,10 +235,13 @@ function App() {
               currentDriver={currentDriver}
               dataLoading={dataLoading}
               inboxNotifications={inboxNotifications}
+              visibleInboxNotifications={visibleInboxNotifications}
               notifications={notifications}
+              notificationHistoryFilter={notificationHistoryFilter}
               notificationPreferences={notificationPreferences}
               onEnablePush={enablePushNotifications}
               onNotificationAction={handleNotificationAction}
+              onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
               upcomingShift={upcomingShift}
@@ -258,10 +264,13 @@ function App() {
               setActiveTab={setActiveTab}
               shifts={enrichedShifts}
               inboxNotifications={inboxNotifications}
+              visibleInboxNotifications={visibleInboxNotifications}
               notifications={notifications}
+              notificationHistoryFilter={notificationHistoryFilter}
               notificationPreferences={notificationPreferences}
               onEnablePush={enablePushNotifications}
               onNotificationAction={handleNotificationAction}
+              onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
               todayShifts={todayShifts}

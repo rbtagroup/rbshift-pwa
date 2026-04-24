@@ -15,10 +15,13 @@ export function DriverView({
   currentDriver,
   dataLoading,
   inboxNotifications,
+  visibleInboxNotifications,
   notifications,
+  notificationHistoryFilter,
   notificationPreferences,
   onEnablePush,
   onNotificationAction,
+  onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
   upcomingShift,
@@ -100,10 +103,13 @@ export function DriverView({
     return (
       <NotificationsSection
         inboxNotifications={inboxNotifications}
+        visibleInboxNotifications={visibleInboxNotifications}
         notifications={notifications}
+        notificationHistoryFilter={notificationHistoryFilter}
         notificationPreferences={notificationPreferences}
         onEnablePush={onEnablePush}
         onNotificationAction={onNotificationAction}
+        onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
       />
@@ -231,10 +237,13 @@ export function DispatcherView(props) {
     thisWeekShifts,
     onboardingItems,
     notifications,
+    notificationHistoryFilter,
     notificationPreferences,
+    visibleInboxNotifications,
     inboxNotifications,
     onEnablePush,
     onNotificationAction,
+    onNotificationHistoryFilterChange,
     onNotificationPreferenceSave,
     onNotificationRead,
     drivers,
@@ -296,10 +305,13 @@ export function DispatcherView(props) {
     return (
       <NotificationsSection
         inboxNotifications={inboxNotifications}
+        visibleInboxNotifications={visibleInboxNotifications}
         notifications={notifications}
+        notificationHistoryFilter={notificationHistoryFilter}
         notificationPreferences={notificationPreferences}
         onEnablePush={onEnablePush}
         onNotificationAction={onNotificationAction}
+        onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
       />
@@ -710,10 +722,13 @@ function ProblemsSection({ onEditShift, problems }) {
 
 function NotificationsSection({
   inboxNotifications,
+  visibleInboxNotifications,
   notifications,
+  notificationHistoryFilter,
   notificationPreferences,
   onEnablePush,
   onNotificationAction,
+  onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
 }) {
@@ -798,11 +813,27 @@ function NotificationsSection({
         <div className="panel-header">
           <div>
             <h3>Doručené události</h3>
-            <p className="muted">Historie push/e-mail/SMS a interních notifikací pro tvůj účet.</p>
+            <p className="muted">{inboxNotifications.length} uložených událostí</p>
+          </div>
+          <div className="button-row wrap">
+            {[
+              ['recent', 'Poslední týden'],
+              ['unread', 'Nepřečtené'],
+              ['all', 'Vše'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={cx('ghost-button', notificationHistoryFilter === value && 'active-pill')}
+                onClick={() => onNotificationHistoryFilterChange(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <div className="stack-md">
-          {inboxNotifications.length === 0 ? <EmptyState text="Zatím tu nejsou žádné doručené události." /> : inboxNotifications.map((item) => (
+          {visibleInboxNotifications.length === 0 ? <EmptyState text="Pro vybraný filtr tu nejsou žádné doručené události." /> : visibleInboxNotifications.map((item) => (
             <div className="list-card" key={item.id}>
               <div>
                 <strong>{item.title}</strong>
