@@ -680,6 +680,40 @@ button:disabled {
   background: rgba(245, 197, 24, 0.09);
 }
 
+.driver-next-detail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.driver-next-detail > div,
+.driver-next-detail > details {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.driver-next-detail span,
+.driver-next-detail summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.driver-next-detail strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.driver-next-detail p {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .driver-quick-grid,
 .driver-dashboard-grid {
   display: grid;
@@ -718,6 +752,31 @@ button:disabled {
   gap: 0.65rem;
 }
 
+.driver-inbox-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.driver-inbox-summary > div {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.65rem;
+  border-radius: 16px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.driver-inbox-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.driver-inbox-summary strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .driver-task-card {
   display: flex;
   justify-content: space-between;
@@ -727,6 +786,21 @@ button:disabled {
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(15, 23, 42, 0.56);
+}
+
+.driver-inbox-card {
+  position: relative;
+  padding-left: 1.15rem;
+}
+
+.driver-inbox-dot {
+  position: absolute;
+  left: 0.55rem;
+  top: 1rem;
+  bottom: 1rem;
+  width: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.36);
 }
 
 .driver-task-warning {
@@ -741,6 +815,18 @@ button:disabled {
 
 .driver-task-info {
   border-color: rgba(59, 130, 246, 0.2);
+}
+
+.driver-task-warning .driver-inbox-dot {
+  background: var(--warning);
+}
+
+.driver-task-danger .driver-inbox-dot {
+  background: var(--danger);
+}
+
+.driver-task-info .driver-inbox-dot {
+  background: var(--info);
 }
 
 .driver-preferences summary {
@@ -887,6 +973,16 @@ button:disabled {
   background: rgba(2, 8, 23, 0.2);
 }
 
+.driver-timeline-list {
+  position: relative;
+}
+
+.driver-timeline-day {
+  background:
+    linear-gradient(90deg, rgba(245, 197, 24, 0.06), transparent 34%),
+    rgba(2, 8, 23, 0.2);
+}
+
 .driver-day-card-header {
   display: flex;
   justify-content: space-between;
@@ -922,6 +1018,26 @@ button:disabled {
   cursor: pointer;
   list-style: none;
   min-width: 0;
+}
+
+.driver-shift-timebox {
+  display: grid;
+  place-items: center;
+  flex: 0 0 62px;
+  min-height: 54px;
+  border-radius: 16px;
+  background: rgba(245, 197, 24, 0.11);
+  color: var(--text);
+}
+
+.driver-shift-timebox strong,
+.driver-shift-timebox small {
+  white-space: nowrap;
+}
+
+.driver-shift-timebox small {
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .driver-shift-details > summary::-webkit-details-marker {
@@ -1314,6 +1430,35 @@ button:disabled {
     gap: 0.45rem;
   }
 
+  .driver-next-detail {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .driver-next-detail > div,
+  .driver-next-detail > details {
+    border-radius: 14px;
+    padding: 0.62rem;
+  }
+
+  .driver-inbox-summary {
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .driver-inbox-summary > div {
+    padding: 0.5rem;
+    border-radius: 13px;
+  }
+
+  .driver-inbox-summary span {
+    font-size: 0.68rem;
+  }
+
+  .driver-inbox-summary strong {
+    font-size: 1.08rem;
+  }
+
   .driver-brief-card {
     border-radius: 14px;
     padding: 0.62rem;
@@ -1484,6 +1629,20 @@ button:disabled {
     gap: 0.5rem;
   }
 
+  .driver-shift-timebox {
+    flex-basis: 52px;
+    min-height: 48px;
+    border-radius: 13px;
+  }
+
+  .driver-shift-timebox strong {
+    font-size: 0.82rem;
+  }
+
+  .driver-shift-timebox small {
+    font-size: 0.68rem;
+  }
+
   .driver-shift-expanded {
     gap: 0.5rem;
     margin-top: 0.55rem;
@@ -1584,6 +1743,10 @@ button:disabled {
   }
 
   .driver-today-brief {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-inbox-summary {
     grid-template-columns: 1fr;
   }
 }

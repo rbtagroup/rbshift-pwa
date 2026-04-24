@@ -311,7 +311,7 @@ export function DriverView({
               <p>Na dnešek ani nejbližší dobu tu nevidím žádnou akci, která by po tobě něco chtěla.</p>
             )}
           </div>
-          {upcomingShift && <StatusPill tone={upcomingShift.driver_response === 'accepted' ? 'success' : upcomingShift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[upcomingShift.driver_response]}</StatusPill>}
+          {upcomingShift && <StatusPill tone={upcomingShift.driver_response === 'accepted' ? 'success' : upcomingShift.driver_response === 'declined' ? 'danger' : 'warning'}>{getDriverShiftStatusText(upcomingShift)}</StatusPill>}
           {upcomingShift ? (
             <div className="driver-hero-actions">
               {renderOwnShiftActions(upcomingShift)}
@@ -345,15 +345,21 @@ export function DriverView({
         </div>
 
         {upcomingShift ? (
-          <div className="driver-dashboard-grid compact-dashboard">
-            <section className="panel">
-              <h3>Detail</h3>
-              <div className="stack-md">
-                <InfoRow label="Auto" value={`${upcomingShift.vehicle?.name ?? '—'} · ${upcomingShift.vehicle?.plate ?? '—'}`} />
-                <InfoRow label="Stav" value={STATUS_LABEL[upcomingShift.status]} />
-                <InfoRow label="Poznámka" value={upcomingShift.note || 'Bez poznámky'} />
-              </div>
-            </section>
+          <div className="driver-next-detail">
+            <div>
+              <span>Auto</span>
+              <strong>{upcomingShift.vehicle?.plate ?? 'Bez auta'}</strong>
+              <p>{upcomingShift.vehicle?.name ?? 'Vozidlo není doplněné'}</p>
+            </div>
+            <div>
+              <span>Stav</span>
+              <strong>{getDriverShiftStatusText(upcomingShift)}</strong>
+              <p>{SHIFT_TYPE_LABEL[upcomingShift.shift_type]}</p>
+            </div>
+            <details>
+              <summary>Poznámka směny</summary>
+              <p>{upcomingShift.note || 'Bez poznámky'}</p>
+            </details>
           </div>
         ) : (
           <section className="panel">
@@ -531,7 +537,7 @@ export function DriverView({
           ) : null}
         </div>
 
-        <div className="stack-lg">
+        <div className="stack-lg driver-timeline-list">
           {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : null}
           {visibleShifts.length > 0 && groupedDriverShiftKeys.length === 0 ? <EmptyState text="Pro vybraný filtr tu není žádná směna." /> : null}
           {groupedDriverShiftKeys.map((dayKey) => {
@@ -540,7 +546,7 @@ export function DriverView({
             const pendingCount = dayShifts.filter((shift) => shift.driver_response === 'pending').length
 
             return (
-              <div className="driver-day-card" key={dayKey}>
+              <div className="driver-day-card driver-timeline-day" key={dayKey}>
                 <div className="driver-day-card-header">
                   <div>
                     <strong>{formatDate(dayDate, { weekday: 'long' })}</strong>
@@ -559,9 +565,13 @@ export function DriverView({
                       <details className={cx('list-card', 'driver-shift-card', 'driver-shift-details', `driver-shift-card-${tone}`)} key={shift.id}>
                         <span className="driver-shift-status-bar" aria-hidden="true" />
                         <summary>
+                          <span className="driver-shift-timebox">
+                            <strong>{formatTime(shift.start_at)}</strong>
+                            <small>{formatTime(shift.end_at)}</small>
+                          </span>
                           <div>
-                            <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
-                            <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                            <strong>{SHIFT_TYPE_LABEL[shift.shift_type]}</strong>
+                            <p>{vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'} · {getDriverShiftStatusText(shift)}</p>
                           </div>
                           <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{getDriverShiftStatusText(shift)}</StatusPill>
                         </summary>
@@ -1020,10 +1030,25 @@ function DriverTasksSection({
           </div>
           <StatusPill tone={hasPrimaryTasks ? 'warning' : 'success'}>{hasPrimaryTasks ? 'Vyžaduje akci' : 'Hotovo'}</StatusPill>
         </div>
+        <div className="driver-inbox-summary">
+          <div>
+            <span>Nové úkoly</span>
+            <strong>{notifications.length}</strong>
+          </div>
+          <div>
+            <span>Nabídky směn</span>
+            <strong>{replacementOffers.length}</strong>
+          </div>
+          <div>
+            <span>Historie</span>
+            <strong>{inboxNotifications.length}</strong>
+          </div>
+        </div>
         <div className="driver-task-list">
           {!hasPrimaryTasks ? <EmptyState text="Teď tu není nic k vyřízení." /> : null}
           {notifications.map((item) => (
-            <div className={cx('driver-task-card', `driver-task-${item.tone ?? 'info'}`)} key={item.id}>
+            <div className={cx('driver-task-card', 'driver-inbox-card', `driver-task-${item.tone ?? 'info'}`)} key={item.id}>
+              <span className="driver-inbox-dot" aria-hidden="true" />
               <div>
                 <strong>{item.title}</strong>
                 <p>{item.description}</p>
@@ -1039,11 +1064,14 @@ function DriverTasksSection({
             const targetedToMe = handoverRequest?.target_driver_id === currentDriver.id
 
             return (
-              <div className={cx('driver-task-card', targetedToMe ? 'driver-task-warning' : 'driver-task-danger')} key={shift.id}>
+              <div className={cx('driver-task-card', 'driver-inbox-card', targetedToMe ? 'driver-task-warning' : 'driver-task-danger')} key={shift.id}>
+                <span className="driver-inbox-dot" aria-hidden="true" />
                 <div>
                   <strong>{targetedToMe ? 'Kolega ti nabízí směnu' : 'Směna k převzetí'}</strong>
                   <p>{formatDate(shift.start_at, { weekday: 'long' })} · {formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
-                  <p className="muted">{shift.note || 'Nabídnutá směna čeká na převzetí.'}</p>
+                  {shift.note ? (
+                    <details className="driver-inline-details compact"><summary>Poznámka</summary><div className="driver-details-body">{shift.note}</div></details>
+                  ) : <p className="muted">Nabídnutá směna čeká na převzetí.</p>}
                 </div>
                 <div className="button-row wrap">
                   <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít směnu</button>
