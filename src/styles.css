@@ -102,6 +102,12 @@ h1, h2, h3, p {
   box-shadow: var(--shadow);
 }
 
+.auth-recovery-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+
 .auth-screen {
   display: grid;
   place-items: center;

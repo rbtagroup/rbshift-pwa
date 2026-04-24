@@ -69,6 +69,7 @@ function appendShiftNote(note, text) {
 
 export function useShiftApp() {
   const hydrationRef = useRef({ userId: null, promise: null })
+  const authEventTimerRef = useRef(null)
   const popupTimersRef = useRef(new Map())
   const driverShiftSnapshotRef = useRef(null)
   const staffLogSnapshotRef = useRef(null)
@@ -117,7 +118,14 @@ export function useShiftApp() {
     let mounted = true
     let authResolved = false
 
-    const applySession = async (nextSession, { clearError = true } = {}) => {
+    const clearAuthEventTimer = () => {
+      if (authEventTimerRef.current) {
+        window.clearTimeout(authEventTimerRef.current)
+        authEventTimerRef.current = null
+      }
+    }
+
+    const applySession = (nextSession, { clearError = true } = {}) => {
       if (!mounted) return
 
       if (clearError) {
@@ -133,16 +141,22 @@ export function useShiftApp() {
         return
       }
 
-      await hydrateSupabaseUser(nextSession.user.id)
-      if (!mounted) return
-      authResolved = true
+      clearAuthEventTimer()
+      authEventTimerRef.current = window.setTimeout(() => {
+        if (!mounted) return
+        void hydrateSupabaseUser(nextSession.user.id).finally(() => {
+          if (mounted) {
+            authResolved = true
+          }
+        })
+      }, 0)
     }
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       try {
-        await applySession(nextSession)
+        applySession(nextSession)
       } catch (authStateError) {
         if (!mounted) return
         setProfile(null)
@@ -165,17 +179,32 @@ export function useShiftApp() {
           return
         }
 
-        await applySession(data.session)
+        applySession(data.session)
       })
       .catch((bootstrapError) => {
         if (!mounted || authResolved) return
-        setProfile(null)
-        setError(bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.')
-        setLoading(false)
+        setError(`${bootstrapError.message || 'Nepodařilo se inicializovat přihlášení.'} Připojení ještě zkusím znovu.`)
+        window.setTimeout(() => {
+          if (!mounted || authResolved) return
+          withTimeout(
+            supabase.auth.getSession(),
+            'Obnovení přihlášení trvá příliš dlouho.',
+            AUTH_SESSION_TIMEOUT_MS
+          ).then(({ data }) => {
+            if (!mounted || authResolved) return
+            applySession(data.session)
+          }).catch((retryError) => {
+            if (!mounted || authResolved) return
+            setProfile(null)
+            setError(retryError.message || 'Nepodařilo se obnovit přihlášení.')
+            setLoading(false)
+          })
+        }, 1500)
       })
 
     return () => {
       mounted = false
+      clearAuthEventTimer()
       subscription.unsubscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1743,6 +1772,40 @@ export function useShiftApp() {
     }
   }
 
+  async function retrySupabaseSession() {
+    if (mode !== 'supabase') return
+
+    setLoading(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const { data, error: sessionError } = await withTimeout(
+        supabase.auth.getSession(),
+        'Obnovení přihlášení trvá příliš dlouho.',
+        AUTH_SESSION_TIMEOUT_MS
+      )
+
+      if (sessionError) {
+        throw new Error(sessionError.message)
+      }
+
+      setSession(data.session ?? null)
+
+      if (!data.session?.user?.id) {
+        setProfile(null)
+        setError('Relace vypršela. Přihlas se prosím znovu.')
+        return
+      }
+
+      await hydrateSupabaseUser(data.session.user.id)
+    } catch (retryError) {
+      setError(retryError.message || 'Obnovení přihlášení selhalo.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleLogout() {
     dataFetchRef.current = null
 
@@ -1924,6 +1987,7 @@ export function useShiftApp() {
     replacementOffers,
     notificationPreferences,
     popupNotifications,
+    retrySupabaseSession,
     session,
     setActiveTab,
     setAvailabilityForm,

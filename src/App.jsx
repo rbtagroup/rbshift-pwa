@@ -63,6 +63,8 @@ function App() {
     profiles,
     replacementOffers,
     popupNotifications,
+    retrySupabaseSession,
+    session,
     setActiveTab,
     setAvailabilityForm,
     setCalendarView,
@@ -121,6 +123,18 @@ function App() {
 
   if (loading) {
     return <div className="app-shell center-screen"><div className="loader-card">Načítám RBSHIFT…</div></div>
+  }
+
+  if (!profile && session?.user?.id) {
+    return (
+      <div className="app-shell center-screen">
+        <div className="loader-card auth-recovery-card">
+          <strong>Obnovuji přihlášení…</strong>
+          {error ? <p className="muted">{error}</p> : <p className="muted">Relace je aktivní, čekám jen na uživatelský profil.</p>}
+          <button className="primary-button" type="button" onClick={retrySupabaseSession}>Zkusit znovu</button>
+        </div>
+      </div>
+    )
   }
 
   if (!profile) {
