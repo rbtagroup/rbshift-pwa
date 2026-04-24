@@ -413,20 +413,24 @@ export function DriverView({
                     const showActions = shift.driver_response === 'pending' || (shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status))
 
                     return (
-                      <div className={cx('list-card', 'driver-shift-card', `driver-shift-card-${tone}`)} key={shift.id}>
+                      <details className={cx('list-card', 'driver-shift-card', 'driver-shift-details', `driver-shift-card-${tone}`)} key={shift.id}>
                         <span className="driver-shift-status-bar" aria-hidden="true" />
-                      <div>
-                        <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
-                        <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
-                        <p className="muted">{shift.note || 'Bez poznámky'}</p>
-                        {showActions ? (
-                          shift.driver_response === 'pending'
-                            ? renderOwnShiftActions(shift)
-                            : <details className="driver-inline-details compact"><summary>Možnosti směny</summary><div className="driver-details-body">{renderOwnShiftActions(shift)}</div></details>
-                        ) : null}
-                      </div>
-                      <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
-                    </div>
+                        <summary>
+                          <div>
+                            <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
+                            <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                          </div>
+                          <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+                        </summary>
+                        <div className="driver-shift-expanded">
+                          <InfoRow label="Poznámka" value={shift.note || 'Bez poznámky'} />
+                          {showActions ? (
+                            shift.driver_response === 'pending'
+                              ? renderOwnShiftActions(shift)
+                              : <details className="driver-inline-details compact"><summary>Možnosti směny</summary><div className="driver-details-body">{renderOwnShiftActions(shift)}</div></details>
+                          ) : null}
+                        </div>
+                      </details>
                     )
                   })}
                 </div>
