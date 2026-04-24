@@ -118,6 +118,11 @@ export function DriverView({
     const shiftKey = getLocalDateKey(shift.start_at)
     return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.driver_response === 'pending'
   }).length
+  const daySelectValue = shiftFilter === 'day'
+    ? selectedShiftDay
+    : ['today', 'week'].includes(shiftFilter)
+      ? shiftFilter
+      : 'week'
 
   const renderTargetedHandover = (shift) => {
     const pendingRequest = pendingHandoverByShiftId[shift.id]
@@ -359,58 +364,61 @@ export function DriverView({
           <span>nejbližší: {upcomingShift ? `${formatDate(upcomingShift.start_at, { weekday: 'long' })} ${formatTime(upcomingShift.start_at)}` : 'žádná'}</span>
         </div>
 
-        <div className="driver-week-strip" aria-label="Týdenní přehled směn">
-          {nextSevenDays.map((day) => (
-            <button
-              className={cx('driver-day-button', selectedShiftDay === day.key && shiftFilter === 'day' && 'active', day.hasPending && 'has-alert')}
-              key={day.key}
-              type="button"
-              onClick={() => {
-                setSelectedShiftDay(day.key)
-                setShiftTimeline('upcoming')
-                setShiftFilter('day')
-              }}
-            >
-              <span>{day.label}</span>
-              <strong>{day.shifts.length}</strong>
-              {day.hasPending ? <i aria-label="Čeká na potvrzení" /> : null}
-            </button>
-          ))}
-        </div>
-
-        <label className="driver-day-select-wrap">
-          Den v týdnu
-          <select
-            value={shiftFilter === 'day' ? selectedShiftDay : shiftFilter}
-            onChange={(event) => {
-              const value = event.target.value
-              setShiftTimeline('upcoming')
-              if (value === 'week' || value === 'today') {
-                setShiftFilter(value)
-                return
-              }
-              setSelectedShiftDay(value)
-              setShiftFilter('day')
-            }}
-          >
-            <option value="week">Celý týden ({weekShiftCount})</option>
-            <option value="today">Dnes</option>
+        <div className="driver-shift-controls">
+          <div className="driver-week-strip" aria-label="Týdenní přehled směn">
             {nextSevenDays.map((day) => (
-              <option key={day.key} value={day.key}>
-                {day.label} · {formatDate(day.date)} · {day.shifts.length} směn
-              </option>
+              <button
+                className={cx('driver-day-button', selectedShiftDay === day.key && shiftFilter === 'day' && 'active', day.hasPending && 'has-alert')}
+                key={day.key}
+                type="button"
+                onClick={() => {
+                  setSelectedShiftDay(day.key)
+                  setShiftTimeline('upcoming')
+                  setShiftFilter('day')
+                }}
+              >
+                <span>{day.label}</span>
+                <strong>{day.shifts.length}</strong>
+                {day.hasPending ? <i aria-label="Čeká na potvrzení" /> : null}
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
 
-        <div className="driver-filter-row">
-          <button className={cx('driver-filter-button', shiftTimeline === 'upcoming' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Nadcházející</button>
-          <button className={cx('driver-filter-button', shiftTimeline === 'history' && 'active')} type="button" onClick={() => { setShiftTimeline('history'); setShiftFilter('all') }}>Historie</button>
-          <button className={cx('driver-filter-button', shiftFilter === 'all' && 'active')} type="button" onClick={() => setShiftFilter('all')}>Vše</button>
-          <button className={cx('driver-filter-button', shiftFilter === 'today' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('today') }}>Dnes</button>
-          <button className={cx('driver-filter-button', shiftFilter === 'week' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Týden</button>
-          <button className={cx('driver-filter-button', shiftFilter === 'night' && 'active')} type="button" onClick={() => setShiftFilter('night')}>Noční</button>
-          <button className={cx('driver-filter-button', shiftFilter === 'pending' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('pending') }}>Čeká</button>
+          <div className="driver-filter-row">
+            <button className={cx('driver-filter-button', shiftTimeline === 'upcoming' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Nadcházející</button>
+            <button className={cx('driver-filter-button', shiftTimeline === 'history' && 'active')} type="button" onClick={() => { setShiftTimeline('history'); setShiftFilter('all') }}>Historie</button>
+            <button className={cx('driver-filter-button', 'driver-desktop-filter', shiftFilter === 'all' && 'active')} type="button" onClick={() => setShiftFilter('all')}>Vše</button>
+            <button className={cx('driver-filter-button', 'driver-desktop-filter', shiftFilter === 'today' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('today') }}>Dnes</button>
+            <button className={cx('driver-filter-button', 'driver-desktop-filter', shiftFilter === 'week' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Týden</button>
+            <button className={cx('driver-filter-button', shiftFilter === 'night' && 'active')} type="button" onClick={() => setShiftFilter('night')}>Noční</button>
+            <button className={cx('driver-filter-button', shiftFilter === 'pending' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('pending') }}>Čeká</button>
+          </div>
+
+          {shiftTimeline === 'upcoming' ? (
+            <label className="driver-day-select-wrap">
+              Den
+              <select
+                value={daySelectValue}
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (value === 'week' || value === 'today') {
+                    setShiftFilter(value)
+                    return
+                  }
+                  setSelectedShiftDay(value)
+                  setShiftFilter('day')
+                }}
+              >
+                <option value="week">Celý týden ({weekShiftCount})</option>
+                <option value="today">Dnes</option>
+                {nextSevenDays.map((day) => (
+                  <option key={day.key} value={day.key}>
+                    {day.label} · {formatDate(day.date)} · {day.shifts.length} směn
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         <div className="stack-lg">
