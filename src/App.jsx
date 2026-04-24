@@ -24,6 +24,8 @@ function App() {
     error,
     filters,
     groupedCalendar,
+    handleApplyOpenShift,
+    handleApproveShiftApplication,
     handleDeleteShift,
     handleDeleteDriver,
     handleDeleteProfile,
@@ -47,11 +49,13 @@ function App() {
     loginPassword,
     message,
     mode,
+    myShiftApplications,
     inboxNotifications,
     notificationHistoryFilter,
     markNotificationRead,
     notifications,
     notificationPreferences,
+    openShifts,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -62,6 +66,8 @@ function App() {
     profileForm,
     profiles,
     replacementOffers,
+    shiftApplications,
+    shiftApplicationsByShiftId,
     popupNotifications,
     retrySupabaseSession,
     session,
@@ -87,6 +93,7 @@ function App() {
     vehiclesMap,
     visibleShifts,
     visibleInboxNotifications,
+    weeklyCoverage,
     onboardingItems,
     dismissPopup,
   } = useShiftApp()
@@ -95,11 +102,13 @@ function App() {
     ? [
         { id: 'today', label: 'Dnes' },
         { id: 'notifications', label: `Notifikace${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
+        { id: 'open-shifts', label: 'Volné směny' },
         { id: 'my-shifts', label: 'Moje směny' },
         { id: 'availability', label: 'Dostupnost' },
       ]
     : [
         { id: 'dashboard', label: 'Dashboard' },
+        { id: 'coverage', label: 'Týden' },
         { id: 'notifications', label: `Notifikace${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
         { id: 'shifts', label: 'Směny' },
         { id: 'problems', label: 'Problémy' },
@@ -111,8 +120,8 @@ function App() {
       ]
 
   const mobilePrimaryIds = profile?.role === 'driver'
-    ? ['today', 'notifications', 'my-shifts']
-    : ['dashboard', 'notifications', 'shifts', 'problems']
+    ? ['today', 'open-shifts', 'my-shifts']
+    : ['dashboard', 'coverage', 'shifts', 'problems']
   const mobilePrimaryNav = nav.filter((item) => mobilePrimaryIds.includes(item.id))
   const mobileOverflowNav = nav.filter((item) => !mobilePrimaryIds.includes(item.id))
 
@@ -249,6 +258,8 @@ function App() {
               currentDriver={currentDriver}
               dataLoading={dataLoading}
               inboxNotifications={inboxNotifications}
+              myShiftApplications={myShiftApplications}
+              openShifts={openShifts}
               visibleInboxNotifications={visibleInboxNotifications}
               notifications={notifications}
               notificationHistoryFilter={notificationHistoryFilter}
@@ -258,6 +269,7 @@ function App() {
               onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
+              onApplyOpenShift={handleApplyOpenShift}
               upcomingShift={upcomingShift}
               visibleShifts={visibleShifts}
               availability={availability}
@@ -277,6 +289,8 @@ function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               shifts={enrichedShifts}
+              weeklyCoverage={weeklyCoverage}
+              shiftApplicationsByShiftId={shiftApplicationsByShiftId}
               inboxNotifications={inboxNotifications}
               visibleInboxNotifications={visibleInboxNotifications}
               notifications={notifications}
@@ -287,12 +301,14 @@ function App() {
               onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
+              onApproveShiftApplication={handleApproveShiftApplication}
               todayShifts={todayShifts}
               problems={problems}
               stats={stats}
               thisWeekShifts={thisWeekShifts}
               onboardingItems={onboardingItems}
               drivers={drivers}
+              driversMap={driversMap}
               vehicles={vehicles}
               availability={availability}
               changeLog={changeLog}

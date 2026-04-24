@@ -59,6 +59,17 @@ create table if not exists public.driver_availability (
   constraint driver_availability_time_check check (to_date >= from_date)
 );
 
+create table if not exists public.shift_applications (
+  id uuid primary key default gen_random_uuid(),
+  shift_id uuid not null references public.shifts(id) on delete cascade,
+  driver_id uuid not null references public.drivers(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (shift_id, driver_id)
+);
+
 create table if not exists public.change_log (
   id text primary key,
   entity_type text not null,
@@ -143,6 +154,7 @@ alter table public.drivers enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.shifts enable row level security;
 alter table public.driver_availability enable row level security;
+alter table public.shift_applications enable row level security;
 alter table public.change_log enable row level security;
 alter table public.notification_preferences enable row level security;
 alter table public.push_subscriptions enable row level security;
@@ -159,12 +171,16 @@ drop policy if exists "vehicles_all_select" on public.vehicles;
 drop policy if exists "shifts_staff_all" on public.shifts;
 drop policy if exists "shifts_driver_select_self" on public.shifts;
 drop policy if exists "shifts_driver_select_replacement" on public.shifts;
+drop policy if exists "shifts_driver_select_open" on public.shifts;
 drop policy if exists "shifts_driver_update_response" on public.shifts;
 drop policy if exists "shifts_driver_takeover_replacement" on public.shifts;
 drop policy if exists "availability_staff_all" on public.driver_availability;
 drop policy if exists "availability_driver_select_self" on public.driver_availability;
 drop policy if exists "availability_driver_insert_self" on public.driver_availability;
 drop policy if exists "availability_driver_update_self" on public.driver_availability;
+drop policy if exists "shift_applications_staff_all" on public.shift_applications;
+drop policy if exists "shift_applications_driver_select_self" on public.shift_applications;
+drop policy if exists "shift_applications_driver_insert_self" on public.shift_applications;
 drop policy if exists "change_log_staff_all" on public.change_log;
 drop policy if exists "notification_preferences_self_select" on public.notification_preferences;
 drop policy if exists "notification_preferences_self_insert" on public.notification_preferences;
@@ -220,6 +236,13 @@ for select using (
   and driver_id is distinct from public.current_driver_id()
 );
 
+create policy "shifts_driver_select_open" on public.shifts
+for select using (
+  public.current_role() = 'driver'
+  and driver_id is null
+  and status = 'planned'
+);
+
 create policy "availability_staff_all" on public.driver_availability
 for all using (public.current_role() in ('admin', 'dispatcher'))
 with check (public.current_role() in ('admin', 'dispatcher'));
@@ -233,6 +256,16 @@ for insert with check (driver_id = public.current_driver_id());
 create policy "availability_driver_update_self" on public.driver_availability
 for update using (driver_id = public.current_driver_id())
 with check (driver_id = public.current_driver_id());
+
+create policy "shift_applications_staff_all" on public.shift_applications
+for all using (public.current_role() in ('admin', 'dispatcher'))
+with check (public.current_role() in ('admin', 'dispatcher'));
+
+create policy "shift_applications_driver_select_self" on public.shift_applications
+for select using (driver_id = public.current_driver_id());
+
+create policy "shift_applications_driver_insert_self" on public.shift_applications
+for insert with check (driver_id = public.current_driver_id());
 
 create policy "change_log_staff_all" on public.change_log
 for all using (public.current_role() in ('admin', 'dispatcher'))
@@ -271,5 +304,7 @@ with check (user_id = auth.uid());
 create index if not exists shifts_driver_time_idx on public.shifts(driver_id, start_at, end_at);
 create index if not exists shifts_vehicle_time_idx on public.shifts(vehicle_id, start_at, end_at);
 create index if not exists availability_driver_time_idx on public.driver_availability(driver_id, from_date, to_date);
+create index if not exists shift_applications_shift_idx on public.shift_applications(shift_id, status);
+create index if not exists shift_applications_driver_idx on public.shift_applications(driver_id, status);
 create index if not exists notification_events_user_created_idx on public.notification_events(user_id, created_at desc);
 create index if not exists push_subscriptions_user_idx on public.push_subscriptions(user_id);

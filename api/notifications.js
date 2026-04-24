@@ -598,6 +598,187 @@ async function updateShiftResponse(adminClient, requester, shiftId, response) {
   return updatedShift
 }
 
+async function getActiveDriverForRequester(adminClient, requester) {
+  const { data: currentDriver, error: driverError } = await adminClient
+    .from('drivers')
+    .select('id, display_name, active')
+    .eq('profile_id', requester.id)
+    .eq('active', true)
+    .single()
+
+  if (driverError || !currentDriver) {
+    throw new Error('K účtu není připojený aktivní řidičský profil.')
+  }
+
+  return currentDriver
+}
+
+async function validateDriverAvailabilityForShift(adminClient, driverId, shift) {
+  const [overlapRes, availabilityRes] = await Promise.all([
+    adminClient
+      .from('shifts')
+      .select('id, start_at, end_at')
+      .eq('driver_id', driverId)
+      .neq('id', shift.id)
+      .neq('status', 'cancelled'),
+    adminClient
+      .from('driver_availability')
+      .select('id, availability_type, from_date, to_date')
+      .eq('driver_id', driverId)
+      .neq('availability_type', 'available'),
+  ])
+
+  if (overlapRes.error) throw new Error(overlapRes.error.message)
+  if (availabilityRes.error) throw new Error(availabilityRes.error.message)
+
+  if ((overlapRes.data ?? []).some((item) => rangesOverlap(item.start_at, item.end_at, shift.start_at, shift.end_at))) {
+    throw new Error('V tomto čase už má řidič jinou směnu.')
+  }
+
+  if ((availabilityRes.data ?? []).some((item) => rangesOverlap(item.from_date, item.to_date, shift.start_at, shift.end_at))) {
+    throw new Error('Řidič má v tomto termínu zadanou nepřítomnost.')
+  }
+}
+
+async function applyForOpenShift(adminClient, requester, shiftId) {
+  if (requester.role !== 'driver') {
+    throw new Error('Na volnou směnu se může přihlásit jen řidič.')
+  }
+
+  const currentDriver = await getActiveDriverForRequester(adminClient, requester)
+  const { data: shift, error: shiftError } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', shiftId)
+    .single()
+
+  if (shiftError || !shift) throw new Error('Směna nebyla nalezena.')
+  if (shift.driver_id) throw new Error('Tato směna už má přiřazeného řidiče.')
+  if (shift.status !== 'planned') throw new Error('Na tuto směnu se už nejde přihlásit.')
+
+  await validateDriverAvailabilityForShift(adminClient, currentDriver.id, shift)
+
+  const now = new Date().toISOString()
+  const { data: application, error: applicationError } = await adminClient
+    .from('shift_applications')
+    .upsert([{
+      shift_id: shift.id,
+      driver_id: currentDriver.id,
+      status: 'pending',
+      updated_at: now,
+    }], { onConflict: 'shift_id,driver_id' })
+    .select('*')
+    .single()
+
+  if (applicationError || !application) {
+    throw new Error(applicationError?.message ?? 'Přihlášení na směnu se nepodařilo.')
+  }
+
+  const staffNotifications = []
+  const { data: staffProfiles, error: staffError } = await adminClient
+    .from('profiles')
+    .select('id')
+    .in('role', ['admin', 'dispatcher'])
+    .eq('active', true)
+  if (staffError) throw new Error(staffError.message)
+
+  ;(staffProfiles ?? []).forEach((item) => {
+    staffNotifications.push({
+      user_id: item.id,
+      shift_id: shift.id,
+      kind: 'shift_application',
+      priority: 'normal',
+      title: 'Řidič se přihlásil na volnou směnu',
+      body: `${requester.full_name} · ${createShiftBody(shift, null)}`,
+      metadata: { shift_id: shift.id, application_id: application.id, event_type: 'shift_application' },
+    })
+  })
+  await deliverNotifications(adminClient, staffNotifications)
+
+  return application
+}
+
+async function approveShiftApplication(adminClient, requester, applicationId) {
+  if (!['admin', 'dispatcher'].includes(requester.role)) {
+    throw new Error('Přihlášku může schválit jen dispečer nebo admin.')
+  }
+
+  const { data: application, error: applicationError } = await adminClient
+    .from('shift_applications')
+    .select('*')
+    .eq('id', applicationId)
+    .single()
+
+  if (applicationError || !application) throw new Error('Přihláška nebyla nalezena.')
+  if (application.status !== 'pending') throw new Error('Tato přihláška už není čekající.')
+
+  const { data: shift, error: shiftError } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', application.shift_id)
+    .single()
+
+  if (shiftError || !shift) throw new Error('Směna nebyla nalezena.')
+  if (shift.driver_id) throw new Error('Tato směna už má přiřazeného řidiče.')
+  if (shift.status !== 'planned') throw new Error('Tuto směnu už nejde přiřadit.')
+
+  await validateDriverAvailabilityForShift(adminClient, application.driver_id, shift)
+
+  const now = new Date().toISOString()
+  const patch = {
+    driver_id: application.driver_id,
+    status: 'planned',
+    driver_response: 'pending',
+    updated_by: requester.id,
+    updated_at: now,
+  }
+  const { data: updatedShift, error: updateError } = await adminClient
+    .from('shifts')
+    .update(patch)
+    .eq('id', shift.id)
+    .is('driver_id', null)
+    .select('*')
+    .single()
+
+  if (updateError || !updatedShift) {
+    throw new Error(updateError?.message ?? 'Směnu se nepodařilo přiřadit.')
+  }
+
+  const [approvedRes, rejectedRes] = await Promise.all([
+    adminClient
+      .from('shift_applications')
+      .update({ status: 'approved', updated_at: now })
+      .eq('id', application.id)
+      .select('*')
+      .single(),
+    adminClient
+      .from('shift_applications')
+      .update({ status: 'rejected', updated_at: now })
+      .eq('shift_id', shift.id)
+      .neq('id', application.id)
+      .eq('status', 'pending'),
+  ])
+
+  if (approvedRes.error) throw new Error(approvedRes.error.message)
+  if (rejectedRes.error) throw new Error(rejectedRes.error.message)
+
+  await adminClient.from('change_log').insert([{
+    id: generateId('log'),
+    entity_type: 'shift',
+    entity_id: shift.id,
+    action: 'application_approved',
+    old_data: shift,
+    new_data: updatedShift,
+    user_id: requester.id,
+    created_at: now,
+  }])
+
+  const notifications = await buildShiftNotifications(adminClient, 'shift_updated', requester, shift, updatedShift)
+  await deliverNotifications(adminClient, notifications)
+
+  return { application: approvedRes.data, shift: updatedShift }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Metoda není povolená.' })
@@ -716,6 +897,38 @@ export default async function handler(req, res) {
       sendJson(res, 200, { shift })
     } catch (responseError) {
       sendJson(res, 400, { error: responseError.message ?? 'Reakci na směnu se nepodařilo uložit.' })
+    }
+    return
+  }
+
+  if (body.action === 'apply-open-shift') {
+    const shiftId = body.shiftId?.trim()
+    if (!shiftId) {
+      sendJson(res, 400, { error: 'Chybí ID směny.' })
+      return
+    }
+
+    try {
+      const application = await applyForOpenShift(adminClient, requester, shiftId)
+      sendJson(res, 200, { application })
+    } catch (applyError) {
+      sendJson(res, 400, { error: applyError.message ?? 'Přihlášení na směnu se nepodařilo.' })
+    }
+    return
+  }
+
+  if (body.action === 'approve-shift-application') {
+    const applicationId = body.applicationId?.trim()
+    if (!applicationId) {
+      sendJson(res, 400, { error: 'Chybí ID přihlášky.' })
+      return
+    }
+
+    try {
+      const result = await approveShiftApplication(adminClient, requester, applicationId)
+      sendJson(res, 200, result)
+    } catch (approveError) {
+      sendJson(res, 400, { error: approveError.message ?? 'Schválení přihlášky se nepodařilo.' })
     }
     return
   }

@@ -36,6 +36,15 @@ const PROFILE_RETRY_DELAYS_MS = [700, 1600]
 const POPUP_TTL_MS = 9000
 const LIVE_REFRESH_INTERVAL_MS = 20000
 const NOTIFICATION_RECENT_DAYS = 7
+const WEEK_CAPACITY = [
+  { day: 1, label: 'Pondělí', dayCapacity: 2, nightCapacity: 2 },
+  { day: 2, label: 'Úterý', dayCapacity: 2, nightCapacity: 2 },
+  { day: 3, label: 'Středa', dayCapacity: 2, nightCapacity: 2 },
+  { day: 4, label: 'Čtvrtek', dayCapacity: 2, nightCapacity: 2 },
+  { day: 5, label: 'Pátek', dayCapacity: 2, nightCapacity: 5 },
+  { day: 6, label: 'Sobota', dayCapacity: 2, nightCapacity: 5 },
+  { day: 0, label: 'Neděle', dayCapacity: 1, nightCapacity: 1 },
+]
 
 function withTimeout(promise, message, timeoutMs) {
   let timeoutId = null
@@ -65,6 +74,17 @@ function isInvalidDate(value) {
 function appendShiftNote(note, text) {
   const trimmedNote = note?.trim() ?? ''
   return trimmedNote ? `${trimmedNote}\n${text}` : text
+}
+
+function startOfIsoWeek(date) {
+  const start = startOfDay(date)
+  const day = start.getDay() || 7
+  start.setDate(start.getDate() - day + 1)
+  return start
+}
+
+function shiftBucket(shift) {
+  return shift.shift_type === 'N' ? 'night' : 'day'
 }
 
 export function useShiftApp() {
@@ -223,6 +243,7 @@ export function useShiftApp() {
   const profiles = state.profiles ?? []
   const notificationPreferencesList = state.notificationPreferences ?? []
   const notificationEvents = state.notificationEvents ?? []
+  const shiftApplications = state.shiftApplications ?? []
   const notificationPreferences = profile
     ? (notificationPreferencesList.find((item) => item.user_id === profile.id) ?? { user_id: profile.id, ...DEFAULT_NOTIFICATION_PREFERENCES })
     : { user_id: '', ...DEFAULT_NOTIFICATION_PREFERENCES }
@@ -279,6 +300,27 @@ export function useShiftApp() {
     ))
   }, [currentDriver, enrichedShifts, profile?.role])
 
+  const openShifts = useMemo(() => {
+    const now = Date.now()
+    return enrichedShifts.filter((shift) => (
+      !shift.driver_id &&
+      shift.status === 'planned' &&
+      new Date(shift.end_at).getTime() >= now
+    ))
+  }, [enrichedShifts])
+
+  const shiftApplicationsByShiftId = useMemo(() => {
+    return shiftApplications.reduce((acc, item) => {
+      acc[item.shift_id] = [...(acc[item.shift_id] ?? []), item]
+      return acc
+    }, {})
+  }, [shiftApplications])
+
+  const myShiftApplications = useMemo(() => {
+    if (!currentDriver) return []
+    return shiftApplications.filter((item) => item.driver_id === currentDriver.id)
+  }, [currentDriver, shiftApplications])
+
   const todayShifts = useMemo(() => {
     const from = startOfDay(new Date())
     const to = endOfDay(new Date())
@@ -317,6 +359,39 @@ export function useShiftApp() {
     const start = startOfDay(new Date())
     const end = endOfDay(addDays(start, 6))
     return enrichedShifts.filter((shift) => overlaps(shift.start_at, shift.end_at, start, end))
+  }, [enrichedShifts])
+
+  const weeklyCoverage = useMemo(() => {
+    const weekStart = startOfIsoWeek(new Date())
+    return WEEK_CAPACITY.map((config, index) => {
+      const dayStart = startOfDay(addDays(weekStart, index))
+      const dayEnd = endOfDay(dayStart)
+      const dayShifts = enrichedShifts.filter((shift) => (
+        shift.status !== 'cancelled' &&
+        overlaps(shift.start_at, shift.end_at, dayStart, dayEnd)
+      ))
+      const assignedDay = dayShifts.filter((shift) => shift.driver_id && shiftBucket(shift) === 'day').length
+      const assignedNight = dayShifts.filter((shift) => shift.driver_id && shiftBucket(shift) === 'night').length
+      const openDay = dayShifts.filter((shift) => !shift.driver_id && shiftBucket(shift) === 'day').length
+      const openNight = dayShifts.filter((shift) => !shift.driver_id && shiftBucket(shift) === 'night').length
+
+      return {
+        ...config,
+        date: dayStart.toISOString(),
+        day: {
+          assigned: assignedDay,
+          open: openDay,
+          capacity: config.dayCapacity,
+          shifts: dayShifts.filter((shift) => shiftBucket(shift) === 'day'),
+        },
+        night: {
+          assigned: assignedNight,
+          open: openNight,
+          capacity: config.nightCapacity,
+          shifts: dayShifts.filter((shift) => shiftBucket(shift) === 'night'),
+        },
+      }
+    })
   }, [enrichedShifts])
 
   const onboardingItems = useMemo(() => {
@@ -854,13 +929,14 @@ export function useShiftApp() {
         }
 
         const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
-        const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
+        const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
           Promise.all([
             supabase.from('profiles').select('*').order('full_name'),
             supabase.from('drivers').select('*').order('display_name'),
             supabase.from('vehicles').select('*').order('name'),
             supabase.from('shifts').select('*').order('start_at'),
             supabase.from('driver_availability').select('*').order('from_date'),
+            supabase.from('shift_applications').select('*').order('created_at', { ascending: false }),
             isStaff
               ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
               : Promise.resolve({ data: [], error: null }),
@@ -875,7 +951,7 @@ export function useShiftApp() {
           DATA_LOAD_TIMEOUT_MS
         )
 
-        const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes]
+        const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, changeLogRes, preferencesRes, notificationEventsRes]
         const firstError = results.find((item) => item.error)?.error
         if (firstError) {
           setError(firstError.message)
@@ -888,6 +964,7 @@ export function useShiftApp() {
           vehicles: vehiclesRes.data ?? [],
           shifts: shiftsRes.data ?? [],
           availability: availabilityRes.data ?? [],
+          shiftApplications: applicationsRes.data ?? [],
           changeLog: changeLogRes.data ?? [],
           notificationPreferences: preferencesRes.data ?? [],
           notificationEvents: notificationEventsRes.data ?? [],
@@ -920,20 +997,21 @@ export function useShiftApp() {
   }
 
   function validateShift(form) {
-    if (!form.driver_id) return 'Vyber řidiče.'
     if (!form.vehicle_id) return 'Vyber vozidlo.'
     if (!form.start_at || !form.end_at) return 'Vyplň začátek a konec směny.'
     if (isInvalidDate(form.start_at) || isInvalidDate(form.end_at)) return 'Vyplň platné datum a čas směny.'
     if (new Date(form.end_at) <= new Date(form.start_at)) return 'Konec směny musí být po začátku.'
 
     const selectedDriver = driversMap[form.driver_id]
-    if (!selectedDriver?.active) return 'Vybraný řidič není aktivní.'
+    if (form.driver_id && !selectedDriver?.active) return 'Vybraný řidič není aktivní.'
 
     const selectedVehicle = vehiclesMap[form.vehicle_id]
     if (selectedVehicle?.status !== 'active') return 'Vybrané vozidlo není aktivní.'
 
     const otherShifts = enrichedShifts.filter((item) => item.id !== form.id)
-    const driverOverlap = otherShifts.find((item) => item.driver_id === form.driver_id && overlaps(item.start_at, item.end_at, form.start_at, form.end_at))
+    const driverOverlap = form.driver_id
+      ? otherShifts.find((item) => item.driver_id === form.driver_id && overlaps(item.start_at, item.end_at, form.start_at, form.end_at))
+      : null
     if (driverOverlap) return 'Řidič už má v tomto čase jinou směnu.'
 
     const vehicleOverlap = otherShifts.find((item) => item.vehicle_id === form.vehicle_id && overlaps(item.start_at, item.end_at, form.start_at, form.end_at))
@@ -945,7 +1023,9 @@ export function useShiftApp() {
       }
     }
 
-    const availabilityConflict = availability.find((item) => item.driver_id === form.driver_id && item.availability_type !== 'available' && overlaps(item.from_date, item.to_date, form.start_at, form.end_at))
+    const availabilityConflict = form.driver_id
+      ? availability.find((item) => item.driver_id === form.driver_id && item.availability_type !== 'available' && overlaps(item.from_date, item.to_date, form.start_at, form.end_at))
+      : null
     if (availabilityConflict) {
       return `Řidič má v tomto termínu blokaci: ${AVAILABILITY_LABEL[availabilityConflict.availability_type]}.`
     }
@@ -979,7 +1059,7 @@ export function useShiftApp() {
     }
 
     const payload = {
-      driver_id: shiftForm.driver_id,
+      driver_id: shiftForm.driver_id || null,
       vehicle_id: shiftForm.vehicle_id,
       shift_type: shiftForm.shift_type,
       status: shiftForm.status,
@@ -1245,6 +1325,104 @@ export function useShiftApp() {
     await fetchSupabaseData()
     setFlash('success', 'Směna je převzatá a dispečink byl upozorněn.')
     setBusy(false)
+  }
+
+  async function handleApplyOpenShift(shift) {
+    if (!currentDriver) {
+      setFlash('error', 'K účtu není připojený řidičský profil.')
+      return
+    }
+
+    const validation = validateShiftTakeover({ ...shift, status: 'replacement_needed' })
+    if (validation && !validation.includes('dostupná k převzetí')) {
+      setFlash('error', validation)
+      return
+    }
+
+    setBusy(true)
+    const now = new Date().toISOString()
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        shiftApplications: [
+          {
+            id: generateId('application'),
+            shift_id: shift.id,
+            driver_id: currentDriver.id,
+            status: 'pending',
+            note: '',
+            created_at: now,
+            updated_at: now,
+          },
+          ...(current.shiftApplications ?? []).filter((item) => !(item.shift_id === shift.id && item.driver_id === currentDriver.id)),
+        ],
+      }))
+      setFlash('success', 'Přihlášení na volnou směnu bylo odesláno dispečinku.')
+      setBusy(false)
+      return
+    }
+
+    try {
+      await callNotificationApi({
+        action: 'apply-open-shift',
+        shiftId: shift.id,
+      })
+      await fetchSupabaseData()
+      setFlash('success', 'Přihlášení na volnou směnu bylo odesláno dispečinku.')
+    } catch (applyError) {
+      setFlash('error', applyError.message ?? 'Přihlášení na směnu se nepodařilo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleApproveShiftApplication(application) {
+    const shift = shifts.find((item) => item.id === application.shift_id)
+    const driver = driversMap[application.driver_id]
+    if (!shift || !driver) {
+      setFlash('error', 'Přihláška nemá platnou směnu nebo řidiče.')
+      return
+    }
+
+    setBusy(true)
+    const now = new Date().toISOString()
+    const patch = {
+      driver_id: application.driver_id,
+      status: 'planned',
+      driver_response: 'pending',
+      updated_by: profile?.id ?? null,
+      updated_at: now,
+    }
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        shifts: current.shifts.map((item) => (item.id === shift.id ? { ...item, ...patch } : item)),
+        shiftApplications: (current.shiftApplications ?? []).map((item) => (
+          item.shift_id === shift.id
+            ? { ...item, status: item.id === application.id ? 'approved' : 'rejected', updated_at: now }
+            : item
+        )),
+      }))
+      await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'application_approved', old_data: shift, new_data: { ...shift, ...patch }, user_id: profile?.id ?? null })
+      setFlash('success', `Směna byla přiřazena řidiči ${driver.display_name}.`)
+      setBusy(false)
+      return
+    }
+
+    try {
+      await callNotificationApi({
+        action: 'approve-shift-application',
+        applicationId: application.id,
+      })
+      await fetchSupabaseData()
+      setFlash('success', `Směna byla přiřazena řidiči ${driver.display_name}.`)
+    } catch (approveError) {
+      setFlash('error', approveError.message ?? 'Schválení přihlášky se nepodařilo.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function handleSaveAvailability(event) {
@@ -1951,6 +2129,8 @@ export function useShiftApp() {
     handleDeleteShift,
     handleDeleteDriver,
     handleDeleteProfile,
+    handleApplyOpenShift,
+    handleApproveShiftApplication,
     handleSaveNotificationPreferences,
     handleExportShifts,
     handleLogin,
@@ -1973,8 +2153,10 @@ export function useShiftApp() {
     loginPassword,
     message,
     mode,
+    myShiftApplications,
     notifications,
     notificationHistoryFilter,
+    openShifts,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -1986,6 +2168,8 @@ export function useShiftApp() {
     profiles,
     replacementOffers,
     notificationPreferences,
+    shiftApplications,
+    shiftApplicationsByShiftId,
     popupNotifications,
     retrySupabaseSession,
     session,
@@ -2013,6 +2197,7 @@ export function useShiftApp() {
     vehiclesMap,
     visibleShifts,
     visibleInboxNotifications,
+    weeklyCoverage,
     createDefaultShiftForm: DEFAULT_SHIFT_FORM,
   }
 }

@@ -24,6 +24,9 @@ export function DriverView({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  myShiftApplications,
+  openShifts,
+  onApplyOpenShift,
   upcomingShift,
   visibleShifts,
   replacementOffers,
@@ -112,6 +115,17 @@ export function DriverView({
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+      />
+    )
+  }
+
+  if (activeTab === 'open-shifts') {
+    return (
+      <OpenShiftsSection
+        applications={myShiftApplications}
+        busy={busy}
+        onApplyOpenShift={onApplyOpenShift}
+        openShifts={openShifts}
       />
     )
   }
@@ -235,6 +249,8 @@ export function DispatcherView(props) {
     problems,
     stats,
     thisWeekShifts,
+    weeklyCoverage,
+    shiftApplicationsByShiftId,
     onboardingItems,
     notifications,
     notificationHistoryFilter,
@@ -246,7 +262,9 @@ export function DispatcherView(props) {
     onNotificationHistoryFilterChange,
     onNotificationPreferenceSave,
     onNotificationRead,
+    onApproveShiftApplication,
     drivers,
+    driversMap,
     vehicles,
     availability,
     changeLog,
@@ -314,6 +332,19 @@ export function DispatcherView(props) {
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+      />
+    )
+  }
+
+  if (activeTab === 'coverage') {
+    return (
+      <WeeklyCoverageSection
+        applicationsByShiftId={shiftApplicationsByShiftId}
+        busy={busy}
+        driversMap={driversMap}
+        onApproveShiftApplication={onApproveShiftApplication}
+        onEditShift={onEditShift}
+        weeklyCoverage={weeklyCoverage}
       />
     )
   }
@@ -503,6 +534,120 @@ function DashboardSection({ shifts, stats, thisWeekShifts, todayShifts, vehicles
   )
 }
 
+function CoverageMeter({ assigned, capacity, open }) {
+  const ratio = capacity > 0 ? assigned / capacity : 0
+  const tone = assigned >= capacity ? 'success' : assigned + open >= capacity ? 'warning' : 'danger'
+  return (
+    <div className="coverage-meter">
+      <div className="coverage-meter-head">
+        <strong>{assigned}/{capacity}</strong>
+        {open > 0 ? <span className="muted">+{open} volné</span> : <span className="muted">bez volných</span>}
+      </div>
+      <div className="coverage-track">
+        <span className={cx('coverage-fill', `coverage-${tone}`)} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function WeeklyCoverageSection({ applicationsByShiftId, busy, driversMap, onApproveShiftApplication, onEditShift, weeklyCoverage }) {
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Týdenní obsazenost</h3>
+          <p className="muted">Kapacita: Po-Čt 2 denní/2 noční, Pá-So 2 denní/5 nočních, Ne 1 denní/1 noční.</p>
+        </div>
+      </div>
+      <div className="coverage-grid">
+        {weeklyCoverage.map((day) => (
+          <div className="coverage-card" key={day.label}>
+            <div>
+              <strong>{day.label}</strong>
+              <p className="muted">{formatDate(day.date)}</p>
+            </div>
+            <div className="coverage-row">
+              <span>Denní</span>
+              <CoverageMeter assigned={day.day.assigned} capacity={day.day.capacity} open={day.day.open} />
+            </div>
+            <div className="coverage-row">
+              <span>Noční</span>
+              <CoverageMeter assigned={day.night.assigned} capacity={day.night.capacity} open={day.night.open} />
+            </div>
+            <div className="stack-md">
+              {[...day.day.shifts, ...day.night.shifts].length === 0 ? <p className="muted">Bez směn.</p> : [...day.day.shifts, ...day.night.shifts].map((shift) => {
+                const applications = applicationsByShiftId[shift.id] ?? []
+                return (
+                  <div className="coverage-shift" key={shift.id}>
+                    <div>
+                      <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
+                      <p className="muted">{shift.driver?.display_name ?? 'Volná směna'} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
+                    </div>
+                    <div className="button-row wrap">
+                      <StatusPill tone={shift.driver_id ? 'success' : applications.length ? 'warning' : 'danger'}>
+                        {shift.driver_id ? 'Obsazeno' : `${applications.filter((item) => item.status === 'pending').length} zájemci`}
+                      </StatusPill>
+                      <button className="ghost-button" onClick={() => onEditShift(shift)}>Otevřít</button>
+                    </div>
+                    {!shift.driver_id && applications.filter((item) => item.status === 'pending').length > 0 ? (
+                      <div className="application-list">
+                        {applications.filter((item) => item.status === 'pending').map((application) => (
+                          <div className="application-row" key={application.id}>
+                            <span>{driversMap[application.driver_id]?.display_name ?? 'Řidič'}</span>
+                            <button className="primary-button" disabled={busy} onClick={() => onApproveShiftApplication(application)}>Schválit</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function OpenShiftsSection({ applications, busy, onApplyOpenShift, openShifts }) {
+  const applicationsByShiftId = applications.reduce((acc, item) => {
+    acc[item.shift_id] = item
+    return acc
+  }, {})
+
+  return (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h3>Volné směny</h3>
+          <p className="muted">Na tyto směny se můžeš přihlásit. Dispečer potom vybere řidiče a směna ti přijde k potvrzení.</p>
+        </div>
+      </div>
+      <div className="stack-md">
+        {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny." /> : openShifts.map((shift) => {
+          const application = applicationsByShiftId[shift.id]
+          return (
+            <div className="list-card" key={shift.id}>
+              <div>
+                <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
+                <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
+                <p className="muted">{shift.note || 'Volná směna čeká na zájemce.'}</p>
+              </div>
+              <div className="button-row wrap">
+                {application ? <StatusPill tone={application.status === 'approved' ? 'success' : 'warning'}>{application.status === 'approved' ? 'Schváleno' : 'Přihlášeno'}</StatusPill> : null}
+                <button className="primary-button" disabled={busy || Boolean(application)} onClick={() => onApplyOpenShift(shift)}>
+                  {application ? 'Čeká na dispečera' : 'Přihlásit se'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 function ShiftsSection({
   busy,
   calendarView,
@@ -562,9 +707,9 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, on
       </div>
       <form className="form-grid" onSubmit={onSaveShift}>
         <label>
-          Řidič
+          Řidič / volná směna
           <select value={shiftForm.driver_id} onChange={(event) => setShiftForm((current) => ({ ...current, driver_id: event.target.value }))}>
-            <option value="">Vyber řidiče</option>
+            <option value="">Volná směna bez řidiče</option>
             {selectableDrivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}{item.active ? '' : ' (neaktivní)'}</option>)}
           </select>
           {!hasDrivers ? <p className="muted">{dataLoading ? 'Načítám seznam řidičů…' : 'Zatím nemáš žádného aktivního řidiče.'}</p> : null}
@@ -608,7 +753,7 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, on
           <textarea rows="4" value={shiftForm.note} onChange={(event) => setShiftForm((current) => ({ ...current, note: event.target.value }))} />
         </label>
         <div className="button-row full-width">
-          <button className="primary-button" disabled={busy || !hasDrivers || !hasVehicles}>{shiftForm.id ? 'Uložit změny' : 'Vytvořit směnu'}</button>
+          <button className="primary-button" disabled={busy || !hasVehicles}>{shiftForm.id ? 'Uložit změny' : 'Vytvořit směnu'}</button>
           {shiftForm.id && <button className="ghost-button" type="button" onClick={() => setShiftForm(createDefaultShiftForm())}>Nová směna</button>}
         </div>
       </form>

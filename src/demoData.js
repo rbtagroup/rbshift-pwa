@@ -246,6 +246,8 @@ export const demoNotificationEvents = [
   },
 ]
 
+export const demoShiftApplications = []
+
 export const demoUsers = [
   {
     label: 'Admin',
@@ -278,4 +280,5 @@ export const emptyState = {
   changeLog: demoChangeLog,
   notificationPreferences: demoNotificationPreferences,
   notificationEvents: demoNotificationEvents,
+  shiftApplications: demoShiftApplications,
 }
