@@ -642,7 +642,16 @@ export function useShiftApp() {
         return
       }
 
-      const registration = await navigator.serviceWorker.ready
+      let registration = await navigator.serviceWorker.getRegistration()
+      if (!registration) {
+        registration = await navigator.serviceWorker.register('/sw.js')
+      }
+      registration = await navigator.serviceWorker.ready
+
+      const existingSubscription = await registration.pushManager.getSubscription()
+      if (existingSubscription) {
+        await existingSubscription.unsubscribe().catch(() => {})
+      }
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(config.publicKey),
@@ -659,6 +668,26 @@ export function useShiftApp() {
       })
     } catch (pushError) {
       setFlash('error', pushError.message || 'Nepodařilo se zapnout push notifikace.')
+    }
+  }
+
+  async function sendTestPushNotification() {
+    if (mode !== 'supabase') {
+      setFlash('success', 'V demo režimu je test push jen ilustrační.')
+      return
+    }
+
+    try {
+      const result = await callNotificationApi({ action: 'test-push' })
+      if (result.ok) {
+        setFlash('success', 'Test push byl odeslán. Pokud se nezobrazil, zkontroluj systémové povolení oznámení pro prohlížeč/PWA.')
+        return
+      }
+
+      const reason = result.delivery?.push ?? 'push nebyl odeslán'
+      setFlash('error', `Server push neodeslal: ${reason}. Nejdřív klikni na Povolit push a ověř VAPID klíče ve Vercelu.`)
+    } catch (pushError) {
+      setFlash('error', pushError.message || 'Test push notifikace selhal.')
     }
   }
 
@@ -2346,6 +2375,7 @@ export function useShiftApp() {
     setDriverForm,
     setFilters,
     setNotificationHistoryFilter,
+    sendTestPushNotification,
     setLoginEmail,
     setLoginPassword,
     setProfileForm,

@@ -1070,6 +1070,28 @@ export default async function handler(req, res) {
     return
   }
 
+  if (body.action === 'test-push') {
+    try {
+      const rows = await deliverNotifications(adminClient, [{
+        user_id: requester.id,
+        shift_id: null,
+        kind: 'push_test',
+        priority: 'normal',
+        title: 'Test RBSHIFT',
+        body: 'Push notifikace jsou zapnuté správně.',
+        metadata: { event_type: 'push_test' },
+      }])
+      const result = rows[0]?.delivery_results ?? {}
+      sendJson(res, 200, {
+        ok: result.push === 'sent',
+        delivery: result,
+      })
+    } catch (testError) {
+      sendJson(res, 400, { error: testError.message ?? 'Test push notifikace selhal.' })
+    }
+    return
+  }
+
   if (body.action === 'mark-read') {
     const notificationId = body.notificationId?.trim()
     if (!notificationId) {

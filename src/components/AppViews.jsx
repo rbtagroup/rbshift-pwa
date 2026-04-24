@@ -43,6 +43,7 @@ export function DriverView({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  onTestPush,
   myShiftApplications,
   openShifts,
   onApplyOpenShift,
@@ -228,6 +229,7 @@ export function DriverView({
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+        onTestPush={onTestPush}
         onRejectHandoverRequest={onRejectHandoverRequest}
         onTakeoverShift={onTakeoverShift}
         pendingHandoverByShiftId={pendingHandoverByShiftId}
@@ -387,6 +389,7 @@ export function DispatcherView(props) {
     onNotificationHistoryFilterChange,
     onNotificationPreferenceSave,
     onNotificationRead,
+    onTestPush,
     onApproveShiftApplication,
     drivers,
     driversMap,
@@ -457,6 +460,7 @@ export function DispatcherView(props) {
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+        onTestPush={onTestPush}
       />
     )
   }
@@ -748,6 +752,7 @@ function DriverTasksSection({
   onNotificationPreferenceSave,
   onNotificationRead,
   onRejectHandoverRequest,
+  onTestPush,
   onTakeoverShift,
   pendingHandoverByShiftId,
   replacementOffers,
@@ -881,7 +886,10 @@ function DriverTasksSection({
               onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, phone_override: event.target.value })}
             />
           </label>
-          <button className="primary-button" type="button" onClick={onEnablePush}>Povolit push v prohlížeči</button>
+          <div className="button-row full-width">
+            <button className="primary-button" type="button" onClick={onEnablePush}>Povolit push v prohlížeči</button>
+            <button className="ghost-button" type="button" onClick={onTestPush}>Odeslat test push</button>
+          </div>
         </div>
       </details>
     </div>
@@ -1155,6 +1163,7 @@ function NotificationsSection({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  onTestPush,
 }) {
   return (
     <div className="grid-2">
@@ -1208,6 +1217,7 @@ function NotificationsSection({
           </label>
           <div className="button-row full-width">
             <button className="primary-button" type="button" onClick={onEnablePush}>Povolit push v prohlížeči</button>
+            <button className="ghost-button" type="button" onClick={onTestPush}>Odeslat test push</button>
           </div>
         </div>
       </section>

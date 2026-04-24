@@ -83,6 +83,7 @@ function App() {
     setLoginEmail,
     setLoginPassword,
     setNotificationHistoryFilter,
+    sendTestPushNotification,
     setProfileForm,
     setShiftForm,
     setVehicleForm,
@@ -273,6 +274,7 @@ function App() {
               onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
+              onTestPush={sendTestPushNotification}
               onApplyOpenShift={handleApplyOpenShift}
               onOfferShiftToDriver={handleOfferShiftToDriver}
               onRejectHandoverRequest={handleRejectHandoverRequest}
@@ -310,6 +312,7 @@ function App() {
               onNotificationHistoryFilterChange={setNotificationHistoryFilter}
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
+              onTestPush={sendTestPushNotification}
               onApproveShiftApplication={handleApproveShiftApplication}
               todayShifts={todayShifts}
               problems={problems}
