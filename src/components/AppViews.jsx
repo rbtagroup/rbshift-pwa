@@ -25,11 +25,34 @@ function addDays(date, days) {
   return nextDate
 }
 
+function getLocalDateTimeInputValue(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+function overlaps(startA, endA, startB, endB) {
+  return new Date(startA) < new Date(endB) && new Date(endA) > new Date(startB)
+}
+
 function getDriverShiftTone(shift) {
   if (shift.status === 'replacement_needed') return 'offered'
   if (shift.driver_response === 'accepted') return 'accepted'
   if (shift.driver_response === 'declined') return 'declined'
   return 'pending'
+}
+
+function getDriverShiftStatusText(shift) {
+  if (shift.status === 'replacement_needed') return 'Nabídnuto k přeobsazení'
+  if (shift.status === 'cancelled') return 'Zrušeno'
+  if (shift.driver_response === 'pending') return 'Čeká na tvoje potvrzení'
+  if (shift.driver_response === 'accepted') return 'Potvrzeno'
+  if (shift.driver_response === 'declined') return 'Odmítnuto'
+  return STATUS_LABEL[shift.status] ?? 'Bez stavu'
 }
 
 export function DriverView({
@@ -118,11 +141,48 @@ export function DriverView({
     const shiftKey = getLocalDateKey(shift.start_at)
     return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.driver_response === 'pending'
   }).length
+  const todayDriverShifts = visibleShifts.filter((shift) => getLocalDateKey(shift.start_at) === todayKey)
+  const nextPendingShift = visibleShifts.find((shift) => shift.driver_response === 'pending')
   const daySelectValue = shiftFilter === 'day'
     ? selectedShiftDay
     : ['today', 'week'].includes(shiftFilter)
       ? shiftFilter
       : 'week'
+
+  const applyAvailabilityPreset = (preset) => {
+    const start = new Date()
+    const end = new Date()
+
+    if (preset === 'today') {
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 0, 0)
+    }
+
+    if (preset === 'tomorrow') {
+      start.setDate(start.getDate() + 1)
+      start.setHours(0, 0, 0, 0)
+      end.setDate(end.getDate() + 1)
+      end.setHours(23, 59, 0, 0)
+    }
+
+    if (preset === 'weekend') {
+      const day = start.getDay()
+      const daysUntilSaturday = (6 - day + 7) % 7
+      start.setDate(start.getDate() + daysUntilSaturday)
+      start.setHours(0, 0, 0, 0)
+      end.setTime(start.getTime())
+      end.setDate(end.getDate() + 1)
+      end.setHours(23, 59, 0, 0)
+    }
+
+    setAvailabilityForm((current) => ({
+      ...current,
+      driver_id: currentDriver.id,
+      availability_type: 'unavailable',
+      from_date: getLocalDateTimeInputValue(start),
+      to_date: getLocalDateTimeInputValue(end),
+    }))
+  }
 
   const renderTargetedHandover = (shift) => {
     const pendingRequest = pendingHandoverByShiftId[shift.id]
@@ -169,7 +229,15 @@ export function DriverView({
       return (
         <div className="button-row">
           <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
-          <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
+          <button
+            className="danger-button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm('Opravdu chceš směnu odmítnout? Dispečer uvidí, že je potřeba ji řešit.')) onRespond(shift, 'declined')
+            }}
+          >
+            Odmítnout
+          </button>
         </div>
       )
     }
@@ -185,8 +253,24 @@ export function DriverView({
             <div className="stack-md">
               {shift.status === 'confirmed' ? (
                 <div className="button-row">
-                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
-                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
+                  <button
+                    className="ghost-button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('Nabídnout tuto směnu všem kolegům? Dokud ji někdo nepřevezme, zůstává přiřazená tobě.')) onRespond(shift, 'offer')
+                    }}
+                  >
+                    Nabídnout všem
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('Opravdu chceš zrušit účast na této směně?')) onRespond(shift, 'release')
+                    }}
+                  >
+                    Zrušit účast
+                  </button>
                 </div>
               ) : null}
               {renderTargetedHandover(shift)}
@@ -235,11 +319,29 @@ export function DriverView({
           ) : null}
         </div>
 
-        <div className="driver-status-strip">
-          <span><strong>{actionCount}</strong> k vyřízení</span>
-          <span><strong>{replacementOffers.length}</strong> nabídky k převzetí</span>
-          <span>Další: <strong>{nextShiftDate}</strong></span>
-          {offeredByMeCount ? <span><strong>{offeredByMeCount}</strong> nabídnuté mnou</span> : null}
+        <div className="driver-today-brief">
+          <div className={cx('driver-brief-card', actionCount > 0 && 'driver-brief-attention')}>
+            <span>Co vyžaduje akci</span>
+            <strong>{actionCount}</strong>
+            <p>{nextPendingShift ? `${formatDate(nextPendingShift.start_at, { weekday: 'long' })} čeká na potvrzení` : actionCount ? 'Mrkni na Úkoly' : 'Všechno je vyřízené'}</p>
+          </div>
+          <div className="driver-brief-card">
+            <span>Dnes</span>
+            <strong>{todayDriverShifts.length}</strong>
+            <p>{todayDriverShifts.length ? todayDriverShifts.map((shift) => `${formatTime(shift.start_at)}–${formatTime(shift.end_at)}`).join(', ') : 'Bez směny'}</p>
+          </div>
+          <div className="driver-brief-card">
+            <span>Další směna</span>
+            <strong>{upcomingShift ? formatTime(upcomingShift.start_at) : '—'}</strong>
+            <p>{upcomingShift ? `${nextShiftDate} · ${upcomingShift.vehicle?.plate ?? 'Bez auta'}` : 'Zatím není naplánovaná'}</p>
+          </div>
+          {replacementOffers.length || offeredByMeCount ? (
+            <div className="driver-brief-card">
+              <span>Záskoky</span>
+              <strong>{replacementOffers.length + offeredByMeCount}</strong>
+              <p>{replacementOffers.length ? `${replacementOffers.length} k převzetí` : `${offeredByMeCount} nabídnuté mnou`}</p>
+            </div>
+          ) : null}
         </div>
 
         {upcomingShift ? (
@@ -291,9 +393,12 @@ export function DriverView({
     return (
       <OpenShiftsSection
         applications={myShiftApplications}
+        availability={availability}
         busy={busy}
+        currentDriver={currentDriver}
         onApplyOpenShift={onApplyOpenShift}
         openShifts={openShifts}
+        visibleShifts={visibleShifts}
       />
     )
   }
@@ -305,6 +410,11 @@ export function DriverView({
           <h3>Moje dostupnost</h3>
           <form className="form-grid" onSubmit={onSaveAvailability}>
             <input type="hidden" value={availabilityForm.id ?? ''} />
+            <div className="availability-presets full-width">
+              <button type="button" className="ghost-button" onClick={() => applyAvailabilityPreset('today')}>Nemůžu dnes</button>
+              <button type="button" className="ghost-button" onClick={() => applyAvailabilityPreset('tomorrow')}>Nemůžu zítra</button>
+              <button type="button" className="ghost-button" onClick={() => applyAvailabilityPreset('weekend')}>Blokovat víkend</button>
+            </div>
             <label>
               Řidič
               <input value={currentDriver.display_name} disabled />
@@ -453,7 +563,7 @@ export function DriverView({
                             <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
                             <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
                           </div>
-                          <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+                          <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{getDriverShiftStatusText(shift)}</StatusPill>
                         </summary>
                         <div className="driver-shift-expanded">
                           <InfoRow label="Poznámka" value={shift.note || 'Bez poznámky'} />
@@ -1035,11 +1145,25 @@ function DriverTasksSection({
   )
 }
 
-function OpenShiftsSection({ applications, busy, onApplyOpenShift, openShifts }) {
+function OpenShiftsSection({ applications, availability, busy, currentDriver, onApplyOpenShift, openShifts, visibleShifts }) {
   const applicationsByShiftId = applications.reduce((acc, item) => {
     acc[item.shift_id] = item
     return acc
   }, {})
+
+  const getSuitability = (shift) => {
+    if (!currentDriver) return { tone: 'info', label: 'Volná směna' }
+    const hasShiftConflict = visibleShifts.some((item) => overlaps(item.start_at, item.end_at, shift.start_at, shift.end_at))
+    if (hasShiftConflict) return { tone: 'danger', label: 'Kolize s tvojí směnou' }
+    const hasAvailabilityConflict = availability.some((item) => (
+      item.driver_id === currentDriver.id &&
+      item.availability_type !== 'available' &&
+      overlaps(item.from_date, item.to_date, shift.start_at, shift.end_at)
+    ))
+    if (hasAvailabilityConflict) return { tone: 'warning', label: 'Máš zadanou blokaci' }
+    if ((currentDriver.preferred_shift_types ?? []).includes(shift.shift_type)) return { tone: 'success', label: 'Sedí na tvoji preferenci' }
+    return { tone: 'info', label: 'Bez kolize' }
+  }
 
   return (
     <section className="panel">
@@ -1052,13 +1176,17 @@ function OpenShiftsSection({ applications, busy, onApplyOpenShift, openShifts })
       <div className="open-shift-grid">
         {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny." /> : openShifts.map((shift) => {
           const application = applicationsByShiftId[shift.id]
+          const suitability = getSuitability(shift)
           return (
             <div className="open-shift-card" key={shift.id}>
               <div>
                 <span className="eyebrow">{formatDate(shift.start_at, { weekday: 'long' })}</span>
                 <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
                 <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
-                <p className="muted">{shift.note || 'Volná směna čeká na zájemce.'}</p>
+                <div className="button-row wrap">
+                  <StatusPill tone={suitability.tone}>{suitability.label}</StatusPill>
+                </div>
+                {shift.note ? <details className="driver-inline-details compact"><summary>Poznámka</summary><div className="driver-details-body">{shift.note}</div></details> : null}
               </div>
               <div className="button-row wrap">
                 {application ? <StatusPill tone={application.status === 'approved' ? 'success' : 'warning'}>{application.status === 'approved' ? 'Schváleno' : 'Přihlášeno'}</StatusPill> : null}
