@@ -591,6 +591,94 @@ button:disabled {
   min-width: 0;
 }
 
+.driver-hero-card {
+  align-items: center;
+  padding: 1.15rem;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(245, 197, 24, 0.14), transparent 30%),
+    linear-gradient(135deg, rgba(11, 18, 32, 0.96), rgba(15, 23, 42, 0.82));
+}
+
+.driver-hero-attention {
+  border-color: rgba(245, 197, 24, 0.38);
+}
+
+.driver-hero-time {
+  margin: 0.2rem 0;
+  font-size: clamp(2.1rem, 7vw, 4.5rem);
+  line-height: 0.95;
+  font-weight: 850;
+  letter-spacing: -0.06em;
+}
+
+.driver-quick-grid,
+.driver-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.driver-dashboard-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.driver-mini-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.driver-mini-card strong {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.driver-action-panel {
+  border-color: rgba(245, 197, 24, 0.22);
+}
+
+.driver-task-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.driver-task-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.driver-task-warning {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.driver-task-danger {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.driver-task-info {
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.driver-preferences summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.driver-preferences .form-grid {
+  margin-top: 0.85rem;
+}
+
 .form-grid,
 .filters-grid {
   display: grid;
@@ -746,6 +834,7 @@ button:disabled {
 @media (max-width: 1180px) {
   .grid-main,
   .grid-2,
+  .driver-dashboard-grid,
   .report-grid,
   .stats-grid,
   .auth-form {
@@ -780,6 +869,7 @@ button:disabled {
   }
 
   .hero-card,
+  .driver-task-card,
   .list-card,
   .panel-header,
   .notice-row {
@@ -879,9 +969,24 @@ button:disabled {
   }
 
   .form-grid,
+  .compact-form-grid,
   .filters-grid {
     grid-template-columns: 1fr;
     gap: 0.55rem;
+  }
+
+  .driver-quick-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .driver-mini-card {
+    border-radius: 14px;
+    padding: 0.62rem;
+  }
+
+  .driver-mini-card strong {
+    font-size: 1.28rem;
   }
 
   .button-row {

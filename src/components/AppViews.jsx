@@ -48,6 +48,9 @@ export function DriverView({
   const [handoverTargets, setHandoverTargets] = useState({})
   const myAvailability = availability.filter((item) => item.driver_id === currentDriver?.id)
   const handoverCandidates = drivers.filter((driver) => driver.active && driver.id !== currentDriver?.id)
+  const pendingShiftCount = visibleShifts.filter((shift) => shift.driver_response === 'pending').length
+  const offeredByMeCount = visibleShifts.filter((shift) => shift.driver_response === 'accepted' && shift.status === 'replacement_needed').length
+  const actionCount = pendingShiftCount + replacementOffers.length + notifications.filter((item) => item.tone !== 'info').length
 
   const renderTargetedHandover = (shift) => {
     const pendingRequest = pendingHandoverByShiftId[shift.id]
@@ -89,6 +92,43 @@ export function DriverView({
     )
   }
 
+  const renderOwnShiftActions = (shift) => {
+    if (shift.driver_response === 'pending') {
+      return (
+        <div className="button-row">
+          <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
+          <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
+        </div>
+      )
+    }
+
+    if (shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status)) {
+      return (
+        <div className="stack-md">
+          {shift.status === 'confirmed' ? (
+            <div className="button-row">
+              <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
+              <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
+            </div>
+          ) : (
+            <p className="muted">Směna je nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
+          )}
+          {renderTargetedHandover(shift)}
+        </div>
+      )
+    }
+
+    return (
+      <p className="muted">
+        {shift.driver_response === 'accepted'
+          ? 'Tato směna je potvrzená.'
+          : shift.driver_response === 'declined'
+            ? 'Tato směna byla odmítnutá a čeká na další řešení.'
+            : 'Na této směně není potřeba další akce.'}
+      </p>
+    )
+  }
+
   if (!currentDriver) {
     return <div className="panel">{dataLoading ? 'Načítám řidičská data…' : 'K tomuto profilu zatím není přiřazen řidičský záznam.'}</div>
   }
@@ -96,73 +136,71 @@ export function DriverView({
   if (activeTab === 'today') {
     return (
       <div className="stack-xl">
-        <div className="hero-card">
+        <div className={cx('hero-card', 'driver-hero-card', upcomingShift?.driver_response === 'pending' && 'driver-hero-attention')}>
           <div>
-            <div className="eyebrow">Moje dnešní směna</div>
-            <h2>{upcomingShift ? SHIFT_TYPE_LABEL[upcomingShift.shift_type] : 'Dnes bez směny'}</h2>
-            <p>
-              {upcomingShift
-                ? `${formatDate(upcomingShift.start_at, { weekday: 'long' })} · ${formatTime(upcomingShift.start_at)}–${formatTime(upcomingShift.end_at)}`
-                : 'Aktuálně nemáš přiřazenou směnu.'}
-            </p>
+            <div className="eyebrow">Řidičský kokpit</div>
+            <h2>{upcomingShift ? 'Nejbližší směna' : 'Všechno vyřízeno'}</h2>
+            {upcomingShift ? (
+              <>
+                <p className="driver-hero-time">{formatTime(upcomingShift.start_at)}–{formatTime(upcomingShift.end_at)}</p>
+                <p>{formatDate(upcomingShift.start_at, { weekday: 'long' })} · {SHIFT_TYPE_LABEL[upcomingShift.shift_type]} · {upcomingShift.vehicle?.plate ?? 'Bez auta'}</p>
+              </>
+            ) : (
+              <p>Na dnešek ani nejbližší dobu tu nevidím žádnou akci, která by po tobě něco chtěla.</p>
+            )}
           </div>
           {upcomingShift && <StatusPill tone={upcomingShift.driver_response === 'accepted' ? 'success' : upcomingShift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[upcomingShift.driver_response]}</StatusPill>}
         </div>
 
+        <div className="driver-quick-grid">
+          <div className="driver-mini-card">
+            <span className="muted">K vyřízení</span>
+            <strong>{actionCount}</strong>
+          </div>
+          <div className="driver-mini-card">
+            <span className="muted">Moje směny</span>
+            <strong>{visibleShifts.length}</strong>
+          </div>
+          <div className="driver-mini-card">
+            <span className="muted">Nabídnuté mnou</span>
+            <strong>{offeredByMeCount}</strong>
+          </div>
+        </div>
+
         {upcomingShift ? (
-          <div className="grid-2">
-            <section className="panel">
-              <h3>Detail směny</h3>
-              <InfoRow label="Auto" value={`${upcomingShift.vehicle?.name ?? '—'} · ${upcomingShift.vehicle?.plate ?? '—'}`} />
-              <InfoRow label="Stav směny" value={STATUS_LABEL[upcomingShift.status]} />
-              <InfoRow label="Poznámka" value={upcomingShift.note || 'Bez poznámky'} />
-              {upcomingShift.driver_response === 'pending' ? (
-                <div className="button-row">
-                  <button className="primary-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
-                  <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
+          <div className="driver-dashboard-grid">
+            <section className="panel driver-action-panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Co teď</h3>
+                  <p className="muted">Jedna směna, jedna hlavní akce.</p>
                 </div>
-              ) : upcomingShift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(upcomingShift.status) ? (
-                <div className="stack-md">
-                  {upcomingShift.status === 'confirmed' ? (
-                    <div className="button-row">
-                      <button className="ghost-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'offer')}>Nabídnout všem</button>
-                      <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'release')}>Zrušit účast</button>
-                    </div>
-                  ) : (
-                    <p className="muted">Směna je nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
-                  )}
-                  {renderTargetedHandover(upcomingShift)}
-                </div>
-              ) : (
-                <p className="muted">
-                  {upcomingShift.driver_response === 'accepted' && upcomingShift.status === 'replacement_needed'
-                    ? 'Směna je nabídnutá kolegům. Dokud ji někdo nepřevezme, zůstává přiřazená tobě.'
-                    : upcomingShift.driver_response === 'accepted'
-                    ? 'Tato směna už je potvrzená.'
-                    : upcomingShift.driver_response === 'declined'
-                      ? 'Tato směna byla odmítnutá a čeká na další řešení.'
-                      : 'Na této směně není potřeba další akce.'}
-                </p>
-              )}
+              </div>
+              {renderOwnShiftActions(upcomingShift)}
             </section>
             <section className="panel">
-              <h3>Další směny</h3>
+              <h3>Detail</h3>
               <div className="stack-md">
-                {visibleShifts.slice(0, 4).map((shift) => (
-                  <ShiftListItem key={shift.id} shift={shift} compact />
-                ))}
+                <InfoRow label="Auto" value={`${upcomingShift.vehicle?.name ?? '—'} · ${upcomingShift.vehicle?.plate ?? '—'}`} />
+                <InfoRow label="Stav" value={STATUS_LABEL[upcomingShift.status]} />
+                <InfoRow label="Poznámka" value={upcomingShift.note || 'Bez poznámky'} />
               </div>
             </section>
           </div>
-        ) : null}
+        ) : (
+          <section className="panel">
+            <EmptyState text="Nemáš žádnou nejbližší směnu. Pokud chceš, mrkni na Volné směny." />
+          </section>
+        )}
       </div>
     )
   }
 
   if (activeTab === 'notifications') {
     return (
-      <NotificationsSection
+      <DriverTasksSection
         inboxNotifications={inboxNotifications}
+        replacementOffers={replacementOffers}
         visibleInboxNotifications={visibleInboxNotifications}
         notifications={notifications}
         notificationHistoryFilter={notificationHistoryFilter}
@@ -172,6 +210,12 @@ export function DriverView({
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+        onRejectHandoverRequest={onRejectHandoverRequest}
+        onTakeoverShift={onTakeoverShift}
+        pendingHandoverByShiftId={pendingHandoverByShiftId}
+        currentDriver={currentDriver}
+        vehiclesMap={vehiclesMap}
+        busy={busy}
       />
     )
   }
@@ -676,6 +720,164 @@ function WeeklyCoverageSection({ applicationsByShiftId, busy, driversMap, onAppr
         ))}
       </div>
     </section>
+  )
+}
+
+function DriverTasksSection({
+  busy,
+  currentDriver,
+  inboxNotifications,
+  notificationHistoryFilter,
+  notificationPreferences,
+  notifications,
+  onEnablePush,
+  onNotificationAction,
+  onNotificationHistoryFilterChange,
+  onNotificationPreferenceSave,
+  onNotificationRead,
+  onRejectHandoverRequest,
+  onTakeoverShift,
+  pendingHandoverByShiftId,
+  replacementOffers,
+  vehiclesMap,
+  visibleInboxNotifications,
+}) {
+  const hasPrimaryTasks = notifications.length > 0 || replacementOffers.length > 0
+
+  return (
+    <div className="stack-xl">
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Úkoly</h3>
+            <p className="muted">Všechno, co po tobě aplikace právě chce. Když je prázdno, máš klid.</p>
+          </div>
+          <StatusPill tone={hasPrimaryTasks ? 'warning' : 'success'}>{hasPrimaryTasks ? 'Vyžaduje akci' : 'Hotovo'}</StatusPill>
+        </div>
+        <div className="driver-task-list">
+          {!hasPrimaryTasks ? <EmptyState text="Teď tu není nic k vyřízení." /> : null}
+          {notifications.map((item) => (
+            <div className={cx('driver-task-card', `driver-task-${item.tone ?? 'info'}`)} key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+              </div>
+              <div className="button-row wrap">
+                <StatusPill tone={item.tone}>{item.tone === 'danger' ? 'Důležité' : item.tone === 'warning' ? 'Akce' : 'Info'}</StatusPill>
+                {item.actionLabel ? <button className="primary-button" onClick={() => onNotificationAction(item)}>{item.actionLabel}</button> : null}
+              </div>
+            </div>
+          ))}
+          {replacementOffers.map((shift) => {
+            const handoverRequest = pendingHandoverByShiftId[shift.id]
+            const targetedToMe = handoverRequest?.target_driver_id === currentDriver.id
+
+            return (
+              <div className={cx('driver-task-card', targetedToMe ? 'driver-task-warning' : 'driver-task-danger')} key={shift.id}>
+                <div>
+                  <strong>{targetedToMe ? 'Kolega ti nabízí směnu' : 'Směna k převzetí'}</strong>
+                  <p>{formatDate(shift.start_at, { weekday: 'long' })} · {formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                  <p className="muted">{shift.note || 'Nabídnutá směna čeká na převzetí.'}</p>
+                </div>
+                <div className="button-row wrap">
+                  <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít směnu</button>
+                  {targetedToMe ? (
+                    <button className="ghost-button" disabled={busy} onClick={() => onRejectHandoverRequest(handoverRequest)}>Odmítnout</button>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Doručené události</h3>
+            <p className="muted">{inboxNotifications.length} uložených událostí</p>
+          </div>
+          <div className="button-row wrap">
+            {[
+              ['recent', 'Týden'],
+              ['unread', 'Nepřečtené'],
+              ['all', 'Vše'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={cx('ghost-button', notificationHistoryFilter === value && 'active-pill')}
+                onClick={() => onNotificationHistoryFilterChange(value)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="stack-md">
+          {visibleInboxNotifications.length === 0 ? <EmptyState text="Pro vybraný filtr tu nejsou žádné doručené události." /> : visibleInboxNotifications.slice(0, 8).map((item) => (
+            <div className="list-card compact" key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.body}</p>
+                <p className="muted">{formatDateTime(item.created_at)}</p>
+              </div>
+              <div className="button-row wrap">
+                {item.shift_id ? <button className="ghost-button" onClick={() => onNotificationAction(item)}>Otevřít</button> : null}
+                {!item.read_at ? <button className="ghost-button" onClick={() => onNotificationRead(item.id)}>Přečteno</button> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <details className="panel driver-preferences">
+        <summary>Nastavení upozornění</summary>
+        <div className="form-grid">
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.push_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, push_enabled: event.target.checked })}
+            />
+            Push
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.email_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, email_enabled: event.target.checked })}
+            />
+            E-mail
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.sms_enabled}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, sms_enabled: event.target.checked })}
+            />
+            SMS
+          </label>
+          <label className="checkbox-item">
+            <input
+              type="checkbox"
+              checked={notificationPreferences.critical_only}
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, critical_only: event.target.checked })}
+            />
+            Jen kritické externě
+          </label>
+          <label className="full-width">
+            Telefon pro SMS
+            <input
+              value={notificationPreferences.phone_override ?? ''}
+              placeholder="např. +420777123456"
+              onChange={(event) => onNotificationPreferenceSave({ ...notificationPreferences, phone_override: event.target.value })}
+            />
+          </label>
+          <button className="primary-button" type="button" onClick={onEnablePush}>Povolit push v prohlížeči</button>
+        </div>
+      </details>
+    </div>
   )
 }
 

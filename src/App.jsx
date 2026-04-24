@@ -105,9 +105,9 @@ function App() {
   const nav = profile?.role === 'driver'
     ? [
         { id: 'today', label: 'Dnes' },
-        { id: 'notifications', label: `Notifikace${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
-        { id: 'open-shifts', label: 'Volné směny' },
-        { id: 'my-shifts', label: 'Moje směny' },
+        { id: 'notifications', label: `Úkoly${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
+        { id: 'my-shifts', label: 'Směny' },
+        { id: 'open-shifts', label: 'Volné' },
         { id: 'availability', label: 'Dostupnost' },
       ]
     : [
@@ -124,7 +124,7 @@ function App() {
       ]
 
   const mobilePrimaryIds = profile?.role === 'driver'
-    ? ['today', 'notifications', 'open-shifts', 'my-shifts']
+    ? ['today', 'notifications', 'my-shifts', 'open-shifts']
     : ['dashboard', 'notifications', 'coverage', 'shifts']
   const mobilePrimaryNav = nav.filter((item) => mobilePrimaryIds.includes(item.id))
   const mobileOverflowNav = nav.filter((item) => !mobilePrimaryIds.includes(item.id))
