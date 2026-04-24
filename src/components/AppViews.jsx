@@ -50,7 +50,6 @@ export function DriverView({
   const handoverCandidates = drivers.filter((driver) => driver.active && driver.id !== currentDriver?.id)
 
   const renderTargetedHandover = (shift) => {
-    if (handoverCandidates.length === 0) return null
     const pendingRequest = pendingHandoverByShiftId[shift.id]
     const selectedTarget = handoverTargets[shift.id] ?? ''
 
@@ -61,27 +60,31 @@ export function DriverView({
             Nabídnuto konkrétně: {driversMap[pendingRequest.target_driver_id]?.display_name ?? 'vybraný kolega'}.
           </p>
         ) : null}
-        <div className="form-grid compact-form-grid">
-          <label>
-            Poslat konkrétnímu kolegovi
-            <select
-              value={selectedTarget}
-              onChange={(event) => setHandoverTargets((current) => ({ ...current, [shift.id]: event.target.value }))}
+        {handoverCandidates.length === 0 ? (
+          <p className="muted">Konkrétní kolegové zatím nejsou dostupní. Zkontroluj, že existují aktivní řidiči a že je v Supabase spuštěné aktuální SQL schéma.</p>
+        ) : (
+          <div className="form-grid compact-form-grid">
+            <label>
+              Poslat konkrétnímu kolegovi
+              <select
+                value={selectedTarget}
+                onChange={(event) => setHandoverTargets((current) => ({ ...current, [shift.id]: event.target.value }))}
+              >
+                <option value="">Vyber kolegu</option>
+                {handoverCandidates.map((driver) => (
+                  <option key={driver.id} value={driver.id}>{driver.display_name}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="ghost-button"
+              disabled={busy || !selectedTarget}
+              onClick={() => onOfferShiftToDriver(shift, selectedTarget)}
             >
-              <option value="">Vyber kolegu</option>
-              {handoverCandidates.map((driver) => (
-                <option key={driver.id} value={driver.id}>{driver.display_name}</option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="ghost-button"
-            disabled={busy || !selectedTarget}
-            onClick={() => onOfferShiftToDriver(shift, selectedTarget)}
-          >
-            Poslat nabídku
-          </button>
-        </div>
+              Poslat nabídku
+            </button>
+          </div>
+        )}
       </div>
     )
   }

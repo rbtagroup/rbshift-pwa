@@ -181,6 +181,7 @@ drop policy if exists "profiles_staff_update" on public.profiles;
 drop policy if exists "profiles_self_update" on public.profiles;
 drop policy if exists "drivers_staff_all" on public.drivers;
 drop policy if exists "drivers_driver_select_self" on public.drivers;
+drop policy if exists "drivers_driver_select_active" on public.drivers;
 drop policy if exists "vehicles_staff_all" on public.vehicles;
 drop policy if exists "vehicles_all_select" on public.vehicles;
 drop policy if exists "shifts_staff_all" on public.shifts;
@@ -231,6 +232,12 @@ with check (public.current_role() in ('admin', 'dispatcher'));
 
 create policy "drivers_driver_select_self" on public.drivers
 for select using (profile_id = auth.uid());
+
+create policy "drivers_driver_select_active" on public.drivers
+for select using (
+  public.current_role() = 'driver'
+  and active = true
+);
 
 create policy "vehicles_staff_all" on public.vehicles
 for all using (public.current_role() in ('admin', 'dispatcher'))
