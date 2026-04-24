@@ -11,6 +11,24 @@ import {
   formatTime,
 } from '../utils'
 
+function getDriverShiftGroup(shift) {
+  const today = new Date()
+  const tomorrow = new Date()
+  tomorrow.setDate(today.getDate() + 1)
+  const shiftDate = new Date(shift.start_at)
+  const todayKey = today.toISOString().slice(0, 10)
+  const tomorrowKey = tomorrow.toISOString().slice(0, 10)
+  const shiftKey = shiftDate.toISOString().slice(0, 10)
+  const todayStart = new Date(todayKey).getTime()
+  const shiftStart = new Date(shiftKey).getTime()
+  const daysAhead = Math.floor((shiftStart - todayStart) / 86400000)
+
+  if (shiftKey === todayKey) return 'Dnes'
+  if (shiftKey === tomorrowKey) return 'Zítra'
+  if (daysAhead >= 0 && daysAhead < 7) return 'Tento týden'
+  return 'Později'
+}
+
 export function DriverView({
   activeTab,
   currentDriver,
@@ -51,6 +69,12 @@ export function DriverView({
   const pendingShiftCount = visibleShifts.filter((shift) => shift.driver_response === 'pending').length
   const offeredByMeCount = visibleShifts.filter((shift) => shift.driver_response === 'accepted' && shift.status === 'replacement_needed').length
   const actionCount = pendingShiftCount + replacementOffers.length + notifications.filter((item) => item.tone !== 'info').length
+  const nextShiftDate = visibleShifts[1]?.start_at ? formatDate(visibleShifts[1].start_at, { weekday: 'long' }) : 'žádná další směna'
+  const groupedDriverShifts = visibleShifts.reduce((acc, shift) => {
+    const group = getDriverShiftGroup(shift)
+    acc[group] = [...(acc[group] ?? []), shift]
+    return acc
+  }, {})
 
   const renderTargetedHandover = (shift) => {
     const pendingRequest = pendingHandoverByShiftId[shift.id]
@@ -105,15 +129,21 @@ export function DriverView({
     if (shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status)) {
       return (
         <div className="stack-md">
-          {shift.status === 'confirmed' ? (
-            <div className="button-row">
-              <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
-              <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
-            </div>
-          ) : (
+          {shift.status === 'replacement_needed' ? (
             <p className="muted">Směna je nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
-          )}
-          {renderTargetedHandover(shift)}
+          ) : null}
+          <details className="driver-inline-details">
+            <summary>Potřebuji změnu</summary>
+            <div className="stack-md">
+              {shift.status === 'confirmed' ? (
+                <div className="button-row">
+                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
+                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
+                </div>
+              ) : null}
+              {renderTargetedHandover(shift)}
+            </div>
+          </details>
         </div>
       )
     }
@@ -150,34 +180,22 @@ export function DriverView({
             )}
           </div>
           {upcomingShift && <StatusPill tone={upcomingShift.driver_response === 'accepted' ? 'success' : upcomingShift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[upcomingShift.driver_response]}</StatusPill>}
+          {upcomingShift ? (
+            <div className="driver-hero-actions">
+              {renderOwnShiftActions(upcomingShift)}
+            </div>
+          ) : null}
         </div>
 
-        <div className="driver-quick-grid">
-          <div className="driver-mini-card">
-            <span className="muted">K vyřízení</span>
-            <strong>{actionCount}</strong>
-          </div>
-          <div className="driver-mini-card">
-            <span className="muted">Moje směny</span>
-            <strong>{visibleShifts.length}</strong>
-          </div>
-          <div className="driver-mini-card">
-            <span className="muted">Nabídnuté mnou</span>
-            <strong>{offeredByMeCount}</strong>
-          </div>
+        <div className="driver-status-strip">
+          <span><strong>{actionCount}</strong> k vyřízení</span>
+          <span><strong>{replacementOffers.length}</strong> nabídky k převzetí</span>
+          <span>Další: <strong>{nextShiftDate}</strong></span>
+          {offeredByMeCount ? <span><strong>{offeredByMeCount}</strong> nabídnuté mnou</span> : null}
         </div>
 
         {upcomingShift ? (
-          <div className="driver-dashboard-grid">
-            <section className="panel driver-action-panel">
-              <div className="panel-header">
-                <div>
-                  <h3>Co teď</h3>
-                  <p className="muted">Jedna směna, jedna hlavní akce.</p>
-                </div>
-              </div>
-              {renderOwnShiftActions(upcomingShift)}
-            </section>
+          <div className="driver-dashboard-grid compact-dashboard">
             <section className="panel">
               <h3>Detail</h3>
               <div className="stack-md">
@@ -284,41 +302,34 @@ export function DriverView({
   return (
     <div className="stack-xl">
       <section className="panel">
-      <div className="panel-header">
-        <div>
-          <h3>Moje směny</h3>
-        </div>
-      </div>
-      <div className="stack-md">
-        {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : visibleShifts.map((shift) => (
-          <div className="list-card" key={shift.id}>
-            <div>
-              <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
-              <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
-              <p className="muted">{shift.note || 'Bez poznámky'}</p>
-              {shift.driver_response === 'pending' ? (
-                <div className="button-row">
-                  <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
-                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
-                </div>
-              ) : shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status) ? (
-                <div className="stack-md">
-                  {shift.status === 'confirmed' ? (
-                    <div className="button-row">
-                      <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
-                      <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
-                    </div>
-                  ) : (
-                    <p className="muted">Nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
-                  )}
-                  {renderTargetedHandover(shift)}
-                </div>
-              ) : null}
-            </div>
-            <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+        <div className="panel-header">
+          <div>
+            <h3>Moje směny</h3>
+            <p className="muted">Seskupeno podle nejbližších dnů.</p>
           </div>
-        ))}
-      </div>
+        </div>
+        <div className="stack-lg">
+          {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : ['Dnes', 'Zítra', 'Tento týden', 'Později'].map((group) => (
+            groupedDriverShifts[group]?.length ? (
+              <div className="driver-shift-group" key={group}>
+                <div className="day-title">{group}</div>
+                <div className="stack-md">
+                  {groupedDriverShifts[group].map((shift) => (
+                    <div className={cx('list-card', 'driver-shift-card', shift.driver_response === 'pending' && 'driver-shift-card-attention')} key={shift.id}>
+                      <div>
+                        <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {SHIFT_TYPE_LABEL[shift.shift_type]}</strong>
+                        <p>{formatDate(shift.start_at, { weekday: 'long' })} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                        <p className="muted">{shift.note || 'Bez poznámky'}</p>
+                        {shift.driver_response === 'pending' ? renderOwnShiftActions(shift) : null}
+                      </div>
+                      <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          ))}
+        </div>
       </section>
 
       {replacementOffers.length > 0 ? (
@@ -326,23 +337,24 @@ export function DriverView({
           <div className="panel-header">
             <div>
               <h3>Směny k převzetí</h3>
+              <p className="muted">Nabídky od kolegů najdeš také v Úkolech.</p>
             </div>
           </div>
           <div className="stack-md">
             {replacementOffers.map((shift) => (
-              <div className="list-card" key={shift.id}>
+              <div className="list-card driver-shift-card" key={shift.id}>
                 <div>
-                  <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
-                  <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                  <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
+                  <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {shift.vehicle?.plate ?? vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
                   <p className="muted">{shift.note || 'Nabídnutá směna čeká na převzetí.'}</p>
                 </div>
                 <div className="button-row wrap">
                   <StatusPill tone={pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? 'warning' : 'danger'}>
                     {pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? 'Nabídnuto tobě' : 'Záskok'}
                   </StatusPill>
-                  <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít směnu</button>
+                  <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít</button>
                   {pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? (
-                    <button className="ghost-button" disabled={busy} onClick={() => onRejectHandoverRequest(pendingHandoverByShiftId[shift.id])}>Odmítnout nabídku</button>
+                    <button className="ghost-button" disabled={busy} onClick={() => onRejectHandoverRequest(pendingHandoverByShiftId[shift.id])}>Odmítnout</button>
                   ) : null}
                 </div>
               </div>
@@ -791,12 +803,9 @@ function DriverTasksSection({
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <h3>Doručené události</h3>
-            <p className="muted">{inboxNotifications.length} uložených událostí</p>
-          </div>
+      <details className="panel driver-preferences">
+        <summary>Historie upozornění ({inboxNotifications.length})</summary>
+        <div className="stack-md driver-details-body">
           <div className="button-row wrap">
             {[
               ['recent', 'Týden'],
@@ -813,8 +822,6 @@ function DriverTasksSection({
               </button>
             ))}
           </div>
-        </div>
-        <div className="stack-md">
           {visibleInboxNotifications.length === 0 ? <EmptyState text="Pro vybraný filtr tu nejsou žádné doručené události." /> : visibleInboxNotifications.slice(0, 8).map((item) => (
             <div className="list-card compact" key={item.id}>
               <div>
@@ -829,7 +836,7 @@ function DriverTasksSection({
             </div>
           ))}
         </div>
-      </section>
+      </details>
 
       <details className="panel driver-preferences">
         <summary>Nastavení upozornění</summary>
@@ -895,20 +902,21 @@ function OpenShiftsSection({ applications, busy, onApplyOpenShift, openShifts })
           <p className="muted">Na tyto směny se můžeš přihlásit. Dispečer potom vybere řidiče a směna ti přijde k potvrzení.</p>
         </div>
       </div>
-      <div className="stack-md">
+      <div className="open-shift-grid">
         {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny." /> : openShifts.map((shift) => {
           const application = applicationsByShiftId[shift.id]
           return (
-            <div className="list-card" key={shift.id}>
+            <div className="open-shift-card" key={shift.id}>
               <div>
-                <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
-                <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
+                <span className="eyebrow">{formatDate(shift.start_at, { weekday: 'long' })}</span>
+                <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
+                <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
                 <p className="muted">{shift.note || 'Volná směna čeká na zájemce.'}</p>
               </div>
               <div className="button-row wrap">
                 {application ? <StatusPill tone={application.status === 'approved' ? 'success' : 'warning'}>{application.status === 'approved' ? 'Schváleno' : 'Přihlášeno'}</StatusPill> : null}
                 <button className="primary-button" disabled={busy || Boolean(application)} onClick={() => onApplyOpenShift(shift)}>
-                  {application ? 'Čeká na dispečera' : 'Přihlásit se'}
+                  {application ? 'Čeká na dispečera' : 'Chci směnu'}
                 </button>
               </div>
             </div>

@@ -593,6 +593,8 @@ button:disabled {
 
 .driver-hero-card {
   align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   padding: 1.15rem;
   background:
     radial-gradient(circle at 18% 10%, rgba(245, 197, 24, 0.14), transparent 30%),
@@ -611,6 +613,36 @@ button:disabled {
   letter-spacing: -0.06em;
 }
 
+.driver-hero-actions {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.driver-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.driver-status-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.driver-status-strip strong {
+  color: var(--text);
+}
+
 .driver-quick-grid,
 .driver-dashboard-grid {
   display: grid;
@@ -620,6 +652,10 @@ button:disabled {
 
 .driver-dashboard-grid {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.compact-dashboard {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .driver-mini-card {
@@ -673,6 +709,62 @@ button:disabled {
 .driver-preferences summary {
   cursor: pointer;
   font-weight: 700;
+}
+
+.driver-inline-details {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  padding: 0.72rem 0.85rem;
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.driver-inline-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.driver-inline-details .stack-md {
+  margin-top: 0.75rem;
+}
+
+.driver-details-body {
+  margin-top: 0.85rem;
+}
+
+.driver-shift-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.driver-shift-card {
+  border-left: 4px solid rgba(148, 163, 184, 0.24);
+}
+
+.driver-shift-card-attention {
+  border-left-color: var(--warning);
+}
+
+.open-shift-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.open-shift-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(245, 197, 24, 0.16);
+  background:
+    radial-gradient(circle at top right, rgba(245, 197, 24, 0.12), transparent 28%),
+    rgba(15, 23, 42, 0.56);
+}
+
+.open-shift-card strong {
+  display: block;
+  margin: 0.16rem 0;
+  font-size: 1.45rem;
 }
 
 .driver-preferences .form-grid {
@@ -835,6 +927,7 @@ button:disabled {
   .grid-main,
   .grid-2,
   .driver-dashboard-grid,
+  .open-shift-grid,
   .report-grid,
   .stats-grid,
   .auth-form {
@@ -978,6 +1071,15 @@ button:disabled {
   .driver-quick-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.45rem;
+  }
+
+  .driver-hero-card {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .driver-status-strip {
+    border-radius: 18px;
   }
 
   .driver-mini-card {
