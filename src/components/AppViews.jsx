@@ -378,6 +378,31 @@ export function DriverView({
           ))}
         </div>
 
+        <label className="driver-day-select-wrap">
+          Den v týdnu
+          <select
+            value={shiftFilter === 'day' ? selectedShiftDay : shiftFilter}
+            onChange={(event) => {
+              const value = event.target.value
+              setShiftTimeline('upcoming')
+              if (value === 'week' || value === 'today') {
+                setShiftFilter(value)
+                return
+              }
+              setSelectedShiftDay(value)
+              setShiftFilter('day')
+            }}
+          >
+            <option value="week">Celý týden ({weekShiftCount})</option>
+            <option value="today">Dnes</option>
+            {nextSevenDays.map((day) => (
+              <option key={day.key} value={day.key}>
+                {day.label} · {formatDate(day.date)} · {day.shifts.length} směn
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="driver-filter-row">
           <button className={cx('driver-filter-button', shiftTimeline === 'upcoming' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Nadcházející</button>
           <button className={cx('driver-filter-button', shiftTimeline === 'history' && 'active')} type="button" onClick={() => { setShiftTimeline('history'); setShiftFilter('all') }}>Historie</button>

@@ -773,6 +773,11 @@ button:disabled {
   width: 100%;
 }
 
+.driver-day-select-wrap {
+  display: none;
+  margin-bottom: 0.75rem;
+}
+
 .driver-day-button,
 .driver-filter-button {
   border: 1px solid rgba(148, 163, 184, 0.14);
@@ -1283,39 +1288,12 @@ button:disabled {
   }
 
   .driver-week-strip {
+    display: none;
+  }
+
+  .driver-day-select-wrap {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 0.12rem;
-    margin-bottom: 0.52rem;
-  }
-
-  .driver-day-button {
-    min-width: 0;
-    min-height: 42px;
-    padding: 0.28rem 0.06rem;
-    border-radius: 10px;
-    gap: 0.08rem;
-  }
-
-  .driver-day-button strong {
-    font-size: 0.78rem;
-  }
-
-  .driver-day-button span {
-    max-width: 100%;
-    overflow: hidden;
-    font-size: 0.58rem;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .driver-day-button i {
-    top: 0.2rem;
-    right: 0.2rem;
-    width: 5px;
-    height: 5px;
-    box-shadow: 0 0 0 2px rgba(245, 197, 24, 0.12);
+    margin-bottom: 0.55rem;
   }
 
   .driver-filter-row {
@@ -1520,21 +1498,4 @@ button:disabled {
     padding: 0.58rem;
   }
 
-  .driver-week-strip {
-    gap: 0.08rem;
-  }
-
-  .driver-day-button {
-    min-height: 38px;
-    padding-inline: 0.04rem;
-    border-radius: 9px;
-  }
-
-  .driver-day-button span {
-    font-size: 0.54rem;
-  }
-
-  .driver-day-button strong {
-    font-size: 0.72rem;
-  }
 }
