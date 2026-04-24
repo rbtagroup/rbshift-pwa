@@ -540,7 +540,7 @@ async function updateShiftResponse(adminClient, requester, shiftId, response) {
         : response === 'offer'
           ? {
               patch: {
-                driver_response: 'declined',
+                driver_response: 'accepted',
                 status: 'replacement_needed',
                 note: appendShiftNote(shift.note, `[${noteTime}] Řidič nabídl směnu k přeobsazení.`),
                 updated_by: requester.id,

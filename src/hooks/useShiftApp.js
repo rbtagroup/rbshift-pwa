@@ -1216,7 +1216,7 @@ export function useShiftApp() {
             }
           : {
               patch: {
-                driver_response: 'declined',
+                driver_response: 'accepted',
                 status: 'replacement_needed',
                 note: appendShiftNote(shift.note, `[${formatDateTime(now)}] Řidič nabídl směnu k přeobsazení.`),
                 updated_by: profile?.id ?? null,

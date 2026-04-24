@@ -80,7 +80,9 @@ export function DriverView({
                 </div>
               ) : (
                 <p className="muted">
-                  {upcomingShift.driver_response === 'accepted'
+                  {upcomingShift.driver_response === 'accepted' && upcomingShift.status === 'replacement_needed'
+                    ? 'Směna je nabídnutá kolegům. Dokud ji někdo nepřevezme, zůstává přiřazená tobě.'
+                    : upcomingShift.driver_response === 'accepted'
                     ? 'Tato směna už je potvrzená.'
                     : upcomingShift.driver_response === 'declined'
                       ? 'Tato směna byla odmítnutá a čeká na další řešení.'
@@ -205,6 +207,8 @@ export function DriverView({
                   <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout kolegům</button>
                   <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
                 </div>
+              ) : shift.driver_response === 'accepted' && shift.status === 'replacement_needed' ? (
+                <p className="muted">Nabídnutá kolegům, ale zatím zůstává přiřazená tobě.</p>
               ) : null}
             </div>
             <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
