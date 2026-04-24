@@ -117,6 +117,10 @@ function createShiftBody(shift, vehicle) {
   return `${when} · ${vehicle?.plate ?? 'bez auta'}`
 }
 
+function rangesOverlap(startA, endA, startB, endB) {
+  return new Date(startA) < new Date(endB) && new Date(startB) < new Date(endA)
+}
+
 async function loadShiftRelations(adminClient, previousShift, nextShift) {
   const driverIds = [previousShift?.driver_id, nextShift?.driver_id].filter(Boolean)
   const vehicleIds = [previousShift?.vehicle_id, nextShift?.vehicle_id].filter(Boolean)
@@ -343,6 +347,114 @@ async function deliverNotifications(adminClient, notifications) {
   return rows
 }
 
+async function takeoverShift(adminClient, requester, shiftId) {
+  if (requester.role !== 'driver') {
+    throw new Error('Směnu může převzít jen řidič.')
+  }
+
+  const { data: currentDriver, error: driverError } = await adminClient
+    .from('drivers')
+    .select('id, display_name, active')
+    .eq('profile_id', requester.id)
+    .eq('active', true)
+    .single()
+
+  if (driverError || !currentDriver) {
+    throw new Error('K účtu není připojený aktivní řidičský profil.')
+  }
+
+  const { data: shift, error: shiftError } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', shiftId)
+    .single()
+
+  if (shiftError || !shift) {
+    throw new Error('Směna nebyla nalezena.')
+  }
+
+  if (shift.status !== 'replacement_needed') {
+    throw new Error('Tato směna už není dostupná k převzetí.')
+  }
+
+  if (shift.driver_id === currentDriver.id) {
+    throw new Error('Tato směna už je přiřazená tobě.')
+  }
+
+  const [overlapRes, availabilityRes] = await Promise.all([
+    adminClient
+      .from('shifts')
+      .select('id, start_at, end_at')
+      .eq('driver_id', currentDriver.id)
+      .neq('id', shift.id)
+      .neq('status', 'cancelled'),
+    adminClient
+      .from('driver_availability')
+      .select('id, availability_type, from_date, to_date')
+      .eq('driver_id', currentDriver.id)
+      .neq('availability_type', 'available'),
+  ])
+
+  if (overlapRes.error) throw new Error(overlapRes.error.message)
+  if (availabilityRes.error) throw new Error(availabilityRes.error.message)
+
+  const hasShiftOverlap = (overlapRes.data ?? []).some((item) => rangesOverlap(item.start_at, item.end_at, shift.start_at, shift.end_at))
+  if (hasShiftOverlap) {
+    throw new Error('V tomto čase už máš jinou směnu.')
+  }
+
+  const availabilityConflict = (availabilityRes.data ?? []).find((item) => rangesOverlap(item.from_date, item.to_date, shift.start_at, shift.end_at))
+  if (availabilityConflict) {
+    throw new Error('V tomto termínu máš zadanou nepřítomnost.')
+  }
+
+  const now = new Date().toISOString()
+  const note = shift.note?.trim()
+    ? `${shift.note.trim()}\n[${now}] Směnu převzal/a ${currentDriver.display_name}.`
+    : `[${now}] Směnu převzal/a ${currentDriver.display_name}.`
+
+  const patch = {
+    driver_id: currentDriver.id,
+    driver_response: 'accepted',
+    status: 'confirmed',
+    note,
+    updated_by: requester.id,
+    updated_at: now,
+  }
+
+  const { data: updatedShift, error: updateError } = await adminClient
+    .from('shifts')
+    .update(patch)
+    .eq('id', shift.id)
+    .eq('status', 'replacement_needed')
+    .select('*')
+    .single()
+
+  if (updateError || !updatedShift) {
+    throw new Error(updateError?.message ?? 'Směnu se nepodařilo převzít. Možná ji už převzal někdo jiný.')
+  }
+
+  const { error: logError } = await adminClient.from('change_log').insert([{
+    id: generateId('log'),
+    entity_type: 'shift',
+    entity_id: shift.id,
+    action: 'shift_takeover',
+    old_data: shift,
+    new_data: updatedShift,
+    user_id: requester.id,
+    created_at: now,
+  }])
+
+  if (logError) {
+    throw new Error(logError.message)
+  }
+
+  const notifications = await buildShiftNotifications(adminClient, 'shift_takeover', requester, shift, updatedShift)
+  await deliverNotifications(adminClient, notifications)
+
+  return updatedShift
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Metoda není povolená.' })
@@ -429,6 +541,22 @@ export default async function handler(req, res) {
     }
 
     sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (body.action === 'takeover-shift') {
+    const shiftId = body.shiftId?.trim()
+    if (!shiftId) {
+      sendJson(res, 400, { error: 'Chybí ID směny.' })
+      return
+    }
+
+    try {
+      const shift = await takeoverShift(adminClient, requester, shiftId)
+      sendJson(res, 200, { shift })
+    } catch (takeoverError) {
+      sendJson(res, 400, { error: takeoverError.message ?? 'Směnu se nepodařilo převzít.' })
+    }
     return
   }
 

@@ -114,7 +114,7 @@ stable
 security definer
 set search_path = public, auth
 as $$
-  select role from public.profiles where id = auth.uid();
+  select role from public.profiles where id = auth.uid() and active = true;
 $$;
 
 create or replace function public.current_driver_id()
@@ -124,7 +124,13 @@ stable
 security definer
 set search_path = public, auth
 as $$
-  select id from public.drivers where profile_id = auth.uid() limit 1;
+  select drivers.id
+  from public.drivers
+  join public.profiles on profiles.id = drivers.profile_id
+  where drivers.profile_id = auth.uid()
+    and drivers.active = true
+    and profiles.active = true
+  limit 1;
 $$;
 
 revoke all on function public.current_role() from public;
@@ -217,18 +223,6 @@ for select using (
 create policy "shifts_driver_update_response" on public.shifts
 for update using (driver_id = public.current_driver_id())
 with check (driver_id = public.current_driver_id());
-
-create policy "shifts_driver_takeover_replacement" on public.shifts
-for update using (
-  public.current_role() = 'driver'
-  and status = 'replacement_needed'
-  and driver_id is distinct from public.current_driver_id()
-)
-with check (
-  driver_id = public.current_driver_id()
-  and status = 'confirmed'
-  and driver_response = 'accepted'
-);
 
 create policy "availability_staff_all" on public.driver_availability
 for all using (public.current_role() in ('admin', 'dispatcher'))

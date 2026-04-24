@@ -56,7 +56,7 @@ export async function getRequester(req, res, allowedRoles = ['admin', 'dispatche
     .eq('id', userData.user.id)
     .single()
 
-  if (profileError || !profile || !allowedRoles.includes(profile.role)) {
+  if (profileError || !profile || !profile.active || !allowedRoles.includes(profile.role)) {
     sendJson(res, 403, { error: 'Na tuto akci nemáš oprávnění.' })
     return null
   }

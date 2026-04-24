@@ -536,8 +536,10 @@ function ShiftsSection({
 }
 
 function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, onSaveShift, setShiftForm, shiftForm, vehicles }) {
-  const hasDrivers = drivers.length > 0
-  const hasVehicles = vehicles.length > 0
+  const selectableDrivers = drivers.filter((item) => item.active || item.id === shiftForm.driver_id)
+  const selectableVehicles = vehicles.filter((item) => item.status === 'active' || item.id === shiftForm.vehicle_id)
+  const hasDrivers = selectableDrivers.length > 0
+  const hasVehicles = selectableVehicles.length > 0
 
   return (
     <section className="panel sticky-panel">
@@ -551,17 +553,17 @@ function ShiftFormPanel({ busy, createDefaultShiftForm, dataLoading, drivers, on
           Řidič
           <select value={shiftForm.driver_id} onChange={(event) => setShiftForm((current) => ({ ...current, driver_id: event.target.value }))}>
             <option value="">Vyber řidiče</option>
-            {drivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}
+            {selectableDrivers.map((item) => <option key={item.id} value={item.id}>{item.display_name}{item.active ? '' : ' (neaktivní)'}</option>)}
           </select>
-          {!hasDrivers ? <p className="muted">{dataLoading ? 'Načítám seznam řidičů…' : 'Zatím nemáš žádného řidiče. Nejdřív ho přidej v záložce Řidiči.'}</p> : null}
+          {!hasDrivers ? <p className="muted">{dataLoading ? 'Načítám seznam řidičů…' : 'Zatím nemáš žádného aktivního řidiče.'}</p> : null}
         </label>
         <label>
           Vozidlo
           <select value={shiftForm.vehicle_id} onChange={(event) => setShiftForm((current) => ({ ...current, vehicle_id: event.target.value }))}>
             <option value="">Vyber auto</option>
-            {vehicles.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.plate}</option>)}
+            {selectableVehicles.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.plate}{item.status === 'active' ? '' : ' (neaktivní)'}</option>)}
           </select>
-          {!hasVehicles ? <p className="muted">{dataLoading ? 'Načítám seznam vozidel…' : 'Zatím nemáš žádné vozidlo. Nejdřív ho přidej v záložce Auta.'}</p> : null}
+          {!hasVehicles ? <p className="muted">{dataLoading ? 'Načítám seznam vozidel…' : 'Zatím nemáš žádné aktivní vozidlo.'}</p> : null}
         </label>
         <label>
           Začátek

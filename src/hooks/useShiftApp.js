@@ -567,6 +567,14 @@ export function useShiftApp() {
           return false
         }
 
+        if (!userProfile.active) {
+          await supabase.auth.signOut()
+          setProfile(null)
+          setSession(null)
+          setError('Tento uživatelský účet je deaktivovaný.')
+          return false
+        }
+
         setProfile(userProfile)
         setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
         void fetchSupabaseData(userProfile)
@@ -803,6 +811,12 @@ export function useShiftApp() {
     if (isInvalidDate(form.start_at) || isInvalidDate(form.end_at)) return 'Vyplň platné datum a čas směny.'
     if (new Date(form.end_at) <= new Date(form.start_at)) return 'Konec směny musí být po začátku.'
 
+    const selectedDriver = driversMap[form.driver_id]
+    if (!selectedDriver?.active) return 'Vybraný řidič není aktivní.'
+
+    const selectedVehicle = vehiclesMap[form.vehicle_id]
+    if (selectedVehicle?.status !== 'active') return 'Vybrané vozidlo není aktivní.'
+
     const otherShifts = enrichedShifts.filter((item) => item.id !== form.id)
     const driverOverlap = otherShifts.find((item) => item.driver_id === form.driver_id && overlaps(item.start_at, item.end_at, form.start_at, form.end_at))
     if (driverOverlap) return 'Řidič už má v tomto čase jinou směnu.'
@@ -810,7 +824,6 @@ export function useShiftApp() {
     const vehicleOverlap = otherShifts.find((item) => item.vehicle_id === form.vehicle_id && overlaps(item.start_at, item.end_at, form.start_at, form.end_at))
     if (vehicleOverlap) return 'Vozidlo je ve stejný čas už přiřazené jiné směně.'
 
-    const selectedVehicle = vehiclesMap[form.vehicle_id]
     if (selectedVehicle?.status === 'service' && selectedVehicle.service_from && selectedVehicle.service_to) {
       if (overlaps(selectedVehicle.service_from, selectedVehicle.service_to, form.start_at, form.end_at)) {
         return 'Vybrané vozidlo je v servisu.'
@@ -1096,22 +1109,17 @@ export function useShiftApp() {
       return
     }
 
-    const { data, error: updateError } = await supabase
-      .from('shifts')
-      .update(patch)
-      .eq('id', shift.id)
-      .eq('status', 'replacement_needed')
-      .select('*')
-      .single()
-
-    if (updateError || !data) {
-      setFlash('error', updateError?.message ?? 'Směnu se nepodařilo převzít. Možná ji už převzal někdo jiný.')
+    try {
+      await callNotificationApi({
+        action: 'takeover-shift',
+        shiftId: shift.id,
+      })
+    } catch (takeoverError) {
+      setFlash('error', takeoverError.message ?? 'Směnu se nepodařilo převzít. Možná ji už převzal někdo jiný.')
       setBusy(false)
       return
     }
 
-    await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'shift_takeover', old_data: shift, new_data: data, user_id: profile?.id ?? null })
-    await dispatchShiftEvent('shift_takeover', shift, data)
     await fetchSupabaseData()
     setFlash('success', 'Směna je převzatá a dispečink byl upozorněn.')
     setBusy(false)
