@@ -29,23 +29,32 @@ import {
 } from '../defaults'
 import { useFlash } from './useFlash'
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000
+const AUTH_SESSION_TIMEOUT_MS = 12000
+const PROFILE_LOAD_TIMEOUT_MS = 20000
+const DATA_LOAD_TIMEOUT_MS = 30000
+const PROFILE_RETRY_DELAYS_MS = [700, 1600]
 const POPUP_TTL_MS = 9000
 const LIVE_REFRESH_INTERVAL_MS = 20000
 const NOTIFICATION_RECENT_DAYS = 7
 
-function withTimeout(promise, message) {
+function withTimeout(promise, message, timeoutMs) {
   let timeoutId = null
 
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timeoutId = window.setTimeout(() => reject(new Error(message)), AUTH_BOOTSTRAP_TIMEOUT_MS)
+      timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs)
     }),
   ]).finally(() => {
     if (timeoutId) {
       window.clearTimeout(timeoutId)
     }
+  })
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
   })
 }
 
@@ -63,6 +72,7 @@ export function useShiftApp() {
   const popupTimersRef = useRef(new Map())
   const driverShiftSnapshotRef = useRef(null)
   const staffLogSnapshotRef = useRef(null)
+  const dataFetchRef = useRef(null)
   const [demoState, setDemoState] = useState(() => loadDemoState())
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -143,7 +153,8 @@ export function useShiftApp() {
 
     withTimeout(
       supabase.auth.getSession(),
-      'Inicializace přihlášení trvá příliš dlouho. Zkus stránku obnovit.'
+      'Inicializace přihlášení trvá příliš dlouho. Zkus stránku obnovit.',
+      AUTH_SESSION_TIMEOUT_MS
     )
       .then(async ({ data, error: authError }) => {
         if (!mounted || authResolved) return
@@ -556,14 +567,10 @@ export function useShiftApp() {
     }
   }
 
-  async function hydrateSupabaseUser(userId) {
-    if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
-      return hydrationRef.current.promise
-    }
+  async function loadUserProfile(userId) {
+    let lastError = null
 
-    setLoading(true)
-    setError('')
-    const hydrationPromise = (async () => {
+    for (let attempt = 0; attempt <= PROFILE_RETRY_DELAYS_MS.length; attempt += 1) {
       try {
         const { data: userProfile, error: profileError } = await withTimeout(
           supabase
@@ -571,13 +578,38 @@ export function useShiftApp() {
             .select('*')
             .eq('id', userId)
             .single(),
-          'Načtení uživatelského profilu trvá příliš dlouho.'
+          'Načtení uživatelského profilu trvá příliš dlouho.',
+          PROFILE_LOAD_TIMEOUT_MS
         )
 
         if (profileError) {
-          setError('Nepodařilo se načíst profil uživatele. Zkontroluj tabulku profiles a RLS politiky.')
-          return false
+          throw new Error(profileError.message)
         }
+
+        return userProfile
+      } catch (profileLoadError) {
+        lastError = profileLoadError
+        const delay = PROFILE_RETRY_DELAYS_MS[attempt]
+        if (delay) {
+          await wait(delay)
+        }
+      }
+    }
+
+    throw lastError ?? new Error('Načtení uživatelského profilu selhalo.')
+  }
+
+  async function hydrateSupabaseUser(userId) {
+    if (hydrationRef.current.userId === userId && hydrationRef.current.promise) {
+      return hydrationRef.current.promise
+    }
+
+    setLoading(true)
+    setError('')
+    setMessage('')
+    const hydrationPromise = (async () => {
+      try {
+        const userProfile = await loadUserProfile(userId)
 
         if (!userProfile.active) {
           await supabase.auth.signOut()
@@ -589,11 +621,11 @@ export function useShiftApp() {
 
         setProfile(userProfile)
         setActiveTab(userProfile.role === 'driver' ? 'today' : 'dashboard')
-        void fetchSupabaseData(userProfile)
+        void fetchSupabaseData(userProfile, { clearError: false })
         return true
       } catch (profileLoadError) {
         setProfile(null)
-        setError(profileLoadError.message || 'Načtení uživatelského profilu selhalo.')
+        setError(`${profileLoadError.message || 'Načtení uživatelského profilu selhalo.'} Přihlášení zůstává aktivní, zkus to prosím znovu za chvíli nebo obnov stránku.`)
         return false
       } finally {
         if (hydrationRef.current.userId === userId) {
@@ -616,6 +648,29 @@ export function useShiftApp() {
     }, LIVE_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
+  }, [mode, profile?.id, profile?.role])
+
+  useEffect(() => {
+    if (mode !== 'supabase' || !profile?.id) return
+
+    const refreshVisibleData = () => {
+      if (document.hidden) return
+      void fetchSupabaseData(profile, { silent: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) refreshVisibleData()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', refreshVisibleData)
+    window.addEventListener('online', refreshVisibleData)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', refreshVisibleData)
+      window.removeEventListener('online', refreshVisibleData)
+    }
   }, [mode, profile?.id, profile?.role])
 
   useEffect(() => {
@@ -753,59 +808,78 @@ export function useShiftApp() {
   }, [changeLog, enrichedShifts, mode, profile?.id, profile?.role, profiles])
 
   async function fetchSupabaseData(currentProfile = profile, options = {}) {
-    const { silent = false } = options
-    if (!silent) {
-      setDataLoading(true)
+    const { clearError = true, silent = false } = options
+    if (silent && dataFetchRef.current) {
+      return dataFetchRef.current
     }
-    try {
-      const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
-      const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
-        Promise.all([
-          supabase.from('profiles').select('*').order('full_name'),
-          supabase.from('drivers').select('*').order('display_name'),
-          supabase.from('vehicles').select('*').order('name'),
-          supabase.from('shifts').select('*').order('start_at'),
-          supabase.from('driver_availability').select('*').order('from_date'),
-          isStaff
-            ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
-            : Promise.resolve({ data: [], error: null }),
-          currentProfile?.id
-            ? supabase.from('notification_preferences').select('*').eq('user_id', currentProfile.id)
-            : Promise.resolve({ data: [], error: null }),
-          currentProfile?.id
-            ? supabase.from('notification_events').select('*').order('created_at', { ascending: false }).limit(50)
-            : Promise.resolve({ data: [], error: null }),
-        ]),
-        'Načtení provozních dat trvá příliš dlouho.'
-      )
 
-      const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes]
-      const firstError = results.find((item) => item.error)?.error
-      if (firstError) {
-        setError(firstError.message)
-        return false
-      }
-
-      setDemoState({
-        profiles: profilesRes.data ?? [],
-        drivers: driversRes.data ?? [],
-        vehicles: vehiclesRes.data ?? [],
-        shifts: shiftsRes.data ?? [],
-        availability: availabilityRes.data ?? [],
-        changeLog: changeLogRes.data ?? [],
-        notificationPreferences: preferencesRes.data ?? [],
-        notificationEvents: notificationEventsRes.data ?? [],
-      })
-
-      return true
-    } catch (dataLoadError) {
-      setError(dataLoadError.message || 'Načtení provozních dat selhalo.')
-      return false
-    } finally {
+    let fetchPromise
+    fetchPromise = (async () => {
       if (!silent) {
-        setDataLoading(false)
+        setDataLoading(true)
       }
-    }
+
+      try {
+        if (clearError) {
+          setError('')
+        }
+
+        const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
+        const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
+          Promise.all([
+            supabase.from('profiles').select('*').order('full_name'),
+            supabase.from('drivers').select('*').order('display_name'),
+            supabase.from('vehicles').select('*').order('name'),
+            supabase.from('shifts').select('*').order('start_at'),
+            supabase.from('driver_availability').select('*').order('from_date'),
+            isStaff
+              ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
+              : Promise.resolve({ data: [], error: null }),
+            currentProfile?.id
+              ? supabase.from('notification_preferences').select('*').eq('user_id', currentProfile.id)
+              : Promise.resolve({ data: [], error: null }),
+            currentProfile?.id
+              ? supabase.from('notification_events').select('*').order('created_at', { ascending: false }).limit(50)
+              : Promise.resolve({ data: [], error: null }),
+          ]),
+          'Načtení provozních dat trvá příliš dlouho.',
+          DATA_LOAD_TIMEOUT_MS
+        )
+
+        const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, changeLogRes, preferencesRes, notificationEventsRes]
+        const firstError = results.find((item) => item.error)?.error
+        if (firstError) {
+          setError(firstError.message)
+          return false
+        }
+
+        setDemoState({
+          profiles: profilesRes.data ?? [],
+          drivers: driversRes.data ?? [],
+          vehicles: vehiclesRes.data ?? [],
+          shifts: shiftsRes.data ?? [],
+          availability: availabilityRes.data ?? [],
+          changeLog: changeLogRes.data ?? [],
+          notificationPreferences: preferencesRes.data ?? [],
+          notificationEvents: notificationEventsRes.data ?? [],
+        })
+
+        return true
+      } catch (dataLoadError) {
+        setError(dataLoadError.message || 'Načtení provozních dat selhalo.')
+        return false
+      } finally {
+        if (!silent) {
+          setDataLoading(false)
+        }
+        if (dataFetchRef.current === fetchPromise) {
+          dataFetchRef.current = null
+        }
+      }
+    })()
+
+    dataFetchRef.current = fetchPromise
+    return fetchPromise
   }
 
   function resetForms() {
@@ -1636,6 +1710,7 @@ export function useShiftApp() {
 
     setBusy(true)
     setError('')
+    setMessage('')
     const normalizedEmail = loginEmail.trim()
 
     try {
@@ -1669,6 +1744,8 @@ export function useShiftApp() {
   }
 
   async function handleLogout() {
+    dataFetchRef.current = null
+
     if (mode === 'demo') {
       localStorage.removeItem(DEMO_USER_KEY)
       setProfile(null)

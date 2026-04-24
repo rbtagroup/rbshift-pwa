@@ -1,18 +1,26 @@
 import { useState } from 'react'
 
 export function useFlash() {
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  const [message, setMessageValue] = useState('')
+  const [error, setErrorValue] = useState('')
+
+  function setError(text) {
+    setErrorValue(text)
+    if (text) setMessageValue('')
+  }
+
+  function setMessage(text) {
+    setMessageValue(text)
+    if (text) setErrorValue('')
+  }
 
   function setFlash(kind, text) {
     if (kind === 'error') {
       setError(text)
-      setMessage('')
       return
     }
 
     setMessage(text)
-    setError('')
   }
 
   return {
