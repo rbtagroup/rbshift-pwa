@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title ?? 'RBSHIFT', {
       body: payload.body ?? '',
       icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      badge: '/icons/notification-badge.png',
       data: payload.metadata ?? {},
       tag: payload.shift_id ?? payload.kind ?? 'rbshift-notification',
     })
