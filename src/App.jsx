@@ -38,6 +38,7 @@ function App() {
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
+    handleTakeoverShift,
     handleToggleDriverActive,
     handleToggleProfileActive,
     loading,
@@ -59,6 +60,7 @@ function App() {
     profile,
     profileForm,
     profiles,
+    replacementOffers,
     popupNotifications,
     setActiveTab,
     setAvailabilityForm,
@@ -240,12 +242,14 @@ function App() {
               visibleShifts={visibleShifts}
               availability={availability}
               onRespond={handleShiftResponse}
+              onTakeoverShift={handleTakeoverShift}
               onAvailabilityEdit={openAvailabilityForEdit}
               availabilityForm={availabilityForm}
               setAvailabilityForm={setAvailabilityForm}
               onSaveAvailability={handleSaveAvailability}
               driversMap={driversMap}
               vehiclesMap={vehiclesMap}
+              replacementOffers={replacementOffers}
               busy={busy}
             />
           ) : (

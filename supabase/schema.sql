@@ -152,7 +152,9 @@ drop policy if exists "vehicles_staff_all" on public.vehicles;
 drop policy if exists "vehicles_all_select" on public.vehicles;
 drop policy if exists "shifts_staff_all" on public.shifts;
 drop policy if exists "shifts_driver_select_self" on public.shifts;
+drop policy if exists "shifts_driver_select_replacement" on public.shifts;
 drop policy if exists "shifts_driver_update_response" on public.shifts;
+drop policy if exists "shifts_driver_takeover_replacement" on public.shifts;
 drop policy if exists "availability_staff_all" on public.driver_availability;
 drop policy if exists "availability_driver_select_self" on public.driver_availability;
 drop policy if exists "availability_driver_insert_self" on public.driver_availability;
@@ -205,9 +207,28 @@ with check (public.current_role() in ('admin', 'dispatcher'));
 create policy "shifts_driver_select_self" on public.shifts
 for select using (driver_id = public.current_driver_id());
 
+create policy "shifts_driver_select_replacement" on public.shifts
+for select using (
+  public.current_role() = 'driver'
+  and status = 'replacement_needed'
+  and driver_id is distinct from public.current_driver_id()
+);
+
 create policy "shifts_driver_update_response" on public.shifts
 for update using (driver_id = public.current_driver_id())
 with check (driver_id = public.current_driver_id());
+
+create policy "shifts_driver_takeover_replacement" on public.shifts
+for update using (
+  public.current_role() = 'driver'
+  and status = 'replacement_needed'
+  and driver_id is distinct from public.current_driver_id()
+)
+with check (
+  driver_id = public.current_driver_id()
+  and status = 'confirmed'
+  and driver_response = 'accepted'
+);
 
 create policy "availability_staff_all" on public.driver_availability
 for all using (public.current_role() in ('admin', 'dispatcher'))

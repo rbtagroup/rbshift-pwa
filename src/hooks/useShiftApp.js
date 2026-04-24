@@ -217,6 +217,16 @@ export function useShiftApp() {
     })
   }, [currentDriver, enrichedShifts, filters, profile?.role])
 
+  const replacementOffers = useMemo(() => {
+    if (profile?.role !== 'driver' || !currentDriver) return []
+    const now = Date.now()
+    return enrichedShifts.filter((shift) => (
+      shift.status === 'replacement_needed' &&
+      shift.driver_id !== currentDriver.id &&
+      new Date(shift.end_at).getTime() >= now
+    ))
+  }, [currentDriver, enrichedShifts, profile?.role])
+
   const todayShifts = useMemo(() => {
     const from = startOfDay(new Date())
     const to = endOfDay(new Date())
@@ -312,6 +322,17 @@ export function useShiftApp() {
           }
         })
 
+      replacementOffers.slice(0, 4).forEach((shift) => {
+        items.push({
+          id: `replacement-offer-${shift.id}`,
+          tone: 'warning',
+          title: 'Směna k převzetí',
+          description: `${formatDateTime(shift.start_at)} · ${shift.vehicle?.plate ?? 'bez auta'} · ${shift.note || 'Kolega ji nabídl k přeobsazení.'}`,
+          actionLabel: 'Moje směny',
+          targetTab: 'my-shifts',
+        })
+      })
+
       return items
     }
 
@@ -356,7 +377,7 @@ export function useShiftApp() {
       })
 
     return items
-  }, [currentDriver, onboardingItems, problems, profile, vehicles, visibleShifts])
+  }, [currentDriver, onboardingItems, problems, profile, replacementOffers, vehicles, visibleShifts])
 
   const unreadNotificationCount = notifications.filter((item) => item.tone !== 'info').length
     + inboxNotifications.filter((item) => !item.read_at).length
@@ -698,6 +719,14 @@ export function useShiftApp() {
             description: `${actor} · ${startAt ? formatDateTime(startAt) : 'čas směny'} · ${plate}`,
           })
         }
+
+        if (item.action === 'shift_takeover') {
+          pushPopup({
+            tone: 'success',
+            title: 'Směna byla převzata',
+            description: `${actor} · ${startAt ? formatDateTime(startAt) : 'čas směny'} · ${plate}`,
+          })
+        }
       })
 
     staffLogSnapshotRef.current = currentIds
@@ -1009,6 +1038,82 @@ export function useShiftApp() {
     )
     await fetchSupabaseData()
     setFlash('success', actionConfig.successMessage)
+    setBusy(false)
+  }
+
+  function validateShiftTakeover(shift) {
+    if (!currentDriver) return 'K účtu není připojený řidičský profil.'
+    if (!currentDriver.active) return 'Neaktivní řidič nemůže přebírat směny.'
+    if (shift.status !== 'replacement_needed') return 'Tato směna už není dostupná k převzetí.'
+    if (shift.driver_id === currentDriver.id) return 'Tato směna už je přiřazená tobě.'
+
+    const otherShifts = enrichedShifts.filter((item) => item.id !== shift.id)
+    const driverOverlap = otherShifts.find((item) => (
+      item.driver_id === currentDriver.id &&
+      item.status !== 'cancelled' &&
+      overlaps(item.start_at, item.end_at, shift.start_at, shift.end_at)
+    ))
+    if (driverOverlap) return 'V tomto čase už máš jinou směnu.'
+
+    const availabilityConflict = availability.find((item) => (
+      item.driver_id === currentDriver.id &&
+      item.availability_type !== 'available' &&
+      overlaps(item.from_date, item.to_date, shift.start_at, shift.end_at)
+    ))
+    if (availabilityConflict) {
+      return `V tomto termínu máš blokaci: ${AVAILABILITY_LABEL[availabilityConflict.availability_type]}.`
+    }
+
+    return ''
+  }
+
+  async function handleTakeoverShift(shift) {
+    const validation = validateShiftTakeover(shift)
+    if (validation) {
+      setFlash('error', validation)
+      return
+    }
+
+    setBusy(true)
+    const now = new Date().toISOString()
+    const patch = {
+      driver_id: currentDriver.id,
+      driver_response: 'accepted',
+      status: 'confirmed',
+      note: appendShiftNote(shift.note, `[${formatDateTime(now)}] Směnu převzal/a ${currentDriver.display_name}.`),
+      updated_by: profile?.id ?? null,
+      updated_at: now,
+    }
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        shifts: current.shifts.map((item) => (item.id === shift.id ? { ...item, ...patch } : item)),
+      }))
+      await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'shift_takeover', old_data: shift, new_data: patch, user_id: profile?.id ?? null })
+      setFlash('success', 'Směna je převzatá a dispečink byl upozorněn.')
+      setBusy(false)
+      return
+    }
+
+    const { data, error: updateError } = await supabase
+      .from('shifts')
+      .update(patch)
+      .eq('id', shift.id)
+      .eq('status', 'replacement_needed')
+      .select('*')
+      .single()
+
+    if (updateError || !data) {
+      setFlash('error', updateError?.message ?? 'Směnu se nepodařilo převzít. Možná ji už převzal někdo jiný.')
+      setBusy(false)
+      return
+    }
+
+    await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'shift_takeover', old_data: shift, new_data: data, user_id: profile?.id ?? null })
+    await dispatchShiftEvent('shift_takeover', shift, data)
+    await fetchSupabaseData()
+    setFlash('success', 'Směna je převzatá a dispečink byl upozorněn.')
     setBusy(false)
   }
 
@@ -1684,6 +1789,7 @@ export function useShiftApp() {
     handleSaveShift,
     handleSaveVehicle,
     handleShiftResponse,
+    handleTakeoverShift,
     handleToggleDriverActive,
     handleToggleProfileActive,
     enablePushNotifications,
@@ -1704,6 +1810,7 @@ export function useShiftApp() {
     profile,
     profileForm,
     profiles,
+    replacementOffers,
     notificationPreferences,
     popupNotifications,
     session,

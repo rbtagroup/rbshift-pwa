@@ -185,6 +185,30 @@ async function buildShiftNotifications(adminClient, eventType, requester, previo
       })
   }
 
+  const addReplacementOfferNotifications = async () => {
+    const { data: activeDrivers, error } = await adminClient
+      .from('drivers')
+      .select('profile_id')
+      .eq('active', true)
+      .not('profile_id', 'is', null)
+
+    if (error) throw new Error(error.message)
+
+    ;(activeDrivers ?? [])
+      .filter((item) => item.profile_id && item.profile_id !== requester.id && item.profile_id !== previousDriverProfileId)
+      .forEach((item) => {
+        notifications.push({
+          user_id: item.profile_id,
+          shift_id: shiftId,
+          kind: eventType,
+          priority: 'normal',
+          title: 'Směna k převzetí',
+          body: createShiftBody(baseShift, vehicle),
+          metadata: { shift_id: shiftId, event_type: eventType },
+        })
+      })
+  }
+
   if (eventType === 'shift_created') {
     addDriverNotification(nextDriverProfileId, 'Přišla ti nová směna', createShiftBody(baseShift, vehicle))
   }
@@ -216,6 +240,7 @@ async function buildShiftNotifications(adminClient, eventType, requester, previo
   }
 
   if (eventType === 'shift_release') {
+    await addReplacementOfferNotifications()
     await addStaffNotifications(
       'Řidič zrušil účast na směně',
       `${requester.full_name} · ${createShiftBody(baseShift, vehicle)}`,
@@ -224,10 +249,20 @@ async function buildShiftNotifications(adminClient, eventType, requester, previo
   }
 
   if (eventType === 'shift_offer') {
+    await addReplacementOfferNotifications()
     await addStaffNotifications(
       'Řidič nabízí směnu k přeobsazení',
       `${requester.full_name} · ${createShiftBody(baseShift, vehicle)}`,
       'critical'
+    )
+  }
+
+  if (eventType === 'shift_takeover') {
+    addDriverNotification(previousDriverProfileId, 'Kolega převzal nabídnutou směnu', `${requester.full_name} · ${createShiftBody(baseShift, vehicle)}`)
+    await addStaffNotifications(
+      'Směna byla převzata kolegou',
+      `${requester.full_name} · ${createShiftBody(baseShift, vehicle)}`,
+      'normal'
     )
   }
 
@@ -399,7 +434,7 @@ export default async function handler(req, res) {
 
   if (body.action === 'dispatch-shift-event') {
     const eventType = body.eventType?.trim()
-    const allowedEvents = ['shift_created', 'shift_updated', 'shift_deleted', 'shift_response', 'shift_release', 'shift_offer']
+    const allowedEvents = ['shift_created', 'shift_updated', 'shift_deleted', 'shift_response', 'shift_release', 'shift_offer', 'shift_takeover']
     if (!allowedEvents.includes(eventType)) {
       sendJson(res, 400, { error: 'Neznámý typ notifikační události.' })
       return

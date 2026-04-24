@@ -23,8 +23,10 @@ export function DriverView({
   onNotificationRead,
   upcomingShift,
   visibleShifts,
+  replacementOffers,
   availability,
   onRespond,
+  onTakeoverShift,
   availabilityForm,
   setAvailabilityForm,
   onSaveAvailability,
@@ -159,11 +161,11 @@ export function DriverView({
   }
 
   return (
-    <section className="panel">
+    <div className="stack-xl">
+      <section className="panel">
       <div className="panel-header">
         <div>
           <h3>Moje směny</h3>
-          <p className="muted">Přehled dneška, zítřka a dalších plánovaných jízd.</p>
         </div>
       </div>
       <div className="stack-md">
@@ -189,7 +191,33 @@ export function DriverView({
           </div>
         ))}
       </div>
-    </section>
+      </section>
+
+      {replacementOffers.length > 0 ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h3>Směny k převzetí</h3>
+            </div>
+          </div>
+          <div className="stack-md">
+            {replacementOffers.map((shift) => (
+              <div className="list-card" key={shift.id}>
+                <div>
+                  <strong>{SHIFT_TYPE_LABEL[shift.shift_type]} · {formatDate(shift.start_at, { weekday: 'long' })}</strong>
+                  <p>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {shift.vehicle?.plate ?? vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                  <p className="muted">{shift.note || 'Nabídnutá směna čeká na převzetí.'}</p>
+                </div>
+                <div className="button-row wrap">
+                  <StatusPill tone="danger">Záskok</StatusPill>
+                  <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít směnu</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
   )
 }
 
