@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   AVAILABILITY_LABEL,
   RESPONSE_LABEL,
@@ -27,19 +28,63 @@ export function DriverView({
   myShiftApplications,
   openShifts,
   onApplyOpenShift,
+  onOfferShiftToDriver,
+  onRejectHandoverRequest,
   upcomingShift,
   visibleShifts,
   replacementOffers,
+  pendingHandoverByShiftId = {},
+  drivers = [],
   availability,
   onRespond,
   onTakeoverShift,
   availabilityForm,
   setAvailabilityForm,
   onSaveAvailability,
+  driversMap,
   vehiclesMap,
   busy,
 }) {
+  const [handoverTargets, setHandoverTargets] = useState({})
   const myAvailability = availability.filter((item) => item.driver_id === currentDriver?.id)
+  const handoverCandidates = drivers.filter((driver) => driver.active && driver.id !== currentDriver?.id)
+
+  const renderTargetedHandover = (shift) => {
+    if (handoverCandidates.length === 0) return null
+    const pendingRequest = pendingHandoverByShiftId[shift.id]
+    const selectedTarget = handoverTargets[shift.id] ?? ''
+
+    return (
+      <div className="handover-box">
+        {pendingRequest ? (
+          <p className="muted">
+            Nabídnuto konkrétně: {driversMap[pendingRequest.target_driver_id]?.display_name ?? 'vybraný kolega'}.
+          </p>
+        ) : null}
+        <div className="form-grid compact-form-grid">
+          <label>
+            Poslat konkrétnímu kolegovi
+            <select
+              value={selectedTarget}
+              onChange={(event) => setHandoverTargets((current) => ({ ...current, [shift.id]: event.target.value }))}
+            >
+              <option value="">Vyber kolegu</option>
+              {handoverCandidates.map((driver) => (
+                <option key={driver.id} value={driver.id}>{driver.display_name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="ghost-button"
+            disabled={busy || !selectedTarget}
+            onClick={() => onOfferShiftToDriver(shift, selectedTarget)}
+          >
+            Poslat nabídku
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!currentDriver) {
     return <div className="panel">{dataLoading ? 'Načítám řidičská data…' : 'K tomuto profilu zatím není přiřazen řidičský záznam.'}</div>
@@ -73,10 +118,17 @@ export function DriverView({
                   <button className="primary-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'accepted')}>Potvrdit směnu</button>
                   <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'declined')}>Odmítnout</button>
                 </div>
-              ) : upcomingShift.driver_response === 'accepted' && upcomingShift.status === 'confirmed' ? (
-                <div className="button-row">
-                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'offer')}>Nabídnout kolegům</button>
-                  <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'release')}>Zrušit účast</button>
+              ) : upcomingShift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(upcomingShift.status) ? (
+                <div className="stack-md">
+                  {upcomingShift.status === 'confirmed' ? (
+                    <div className="button-row">
+                      <button className="ghost-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'offer')}>Nabídnout všem</button>
+                      <button className="danger-button" disabled={busy} onClick={() => onRespond(upcomingShift, 'release')}>Zrušit účast</button>
+                    </div>
+                  ) : (
+                    <p className="muted">Směna je nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
+                  )}
+                  {renderTargetedHandover(upcomingShift)}
                 </div>
               ) : (
                 <p className="muted">
@@ -202,13 +254,18 @@ export function DriverView({
                   <button className="primary-button" disabled={busy} onClick={() => onRespond(shift, 'accepted')}>Potvrdit směnu</button>
                   <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'declined')}>Odmítnout</button>
                 </div>
-              ) : shift.driver_response === 'accepted' && shift.status === 'confirmed' ? (
-                <div className="button-row">
-                  <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout kolegům</button>
-                  <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
+              ) : shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status) ? (
+                <div className="stack-md">
+                  {shift.status === 'confirmed' ? (
+                    <div className="button-row">
+                      <button className="ghost-button" disabled={busy} onClick={() => onRespond(shift, 'offer')}>Nabídnout všem</button>
+                      <button className="danger-button" disabled={busy} onClick={() => onRespond(shift, 'release')}>Zrušit účast</button>
+                    </div>
+                  ) : (
+                    <p className="muted">Nabídnutá k přeobsazení, ale zatím zůstává přiřazená tobě.</p>
+                  )}
+                  {renderTargetedHandover(shift)}
                 </div>
-              ) : shift.driver_response === 'accepted' && shift.status === 'replacement_needed' ? (
-                <p className="muted">Nabídnutá kolegům, ale zatím zůstává přiřazená tobě.</p>
               ) : null}
             </div>
             <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
@@ -233,8 +290,13 @@ export function DriverView({
                   <p className="muted">{shift.note || 'Nabídnutá směna čeká na převzetí.'}</p>
                 </div>
                 <div className="button-row wrap">
-                  <StatusPill tone="danger">Záskok</StatusPill>
+                  <StatusPill tone={pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? 'warning' : 'danger'}>
+                    {pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? 'Nabídnuto tobě' : 'Záskok'}
+                  </StatusPill>
                   <button className="primary-button" disabled={busy} onClick={() => onTakeoverShift(shift)}>Převzít směnu</button>
+                  {pendingHandoverByShiftId[shift.id]?.target_driver_id === currentDriver.id ? (
+                    <button className="ghost-button" disabled={busy} onClick={() => onRejectHandoverRequest(pendingHandoverByShiftId[shift.id])}>Odmítnout nabídku</button>
+                  ) : null}
                 </div>
               </div>
             ))}

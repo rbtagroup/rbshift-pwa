@@ -278,6 +278,48 @@ async function buildShiftNotifications(adminClient, eventType, requester, previo
   return notifications
 }
 
+async function buildTargetedHandoverNotifications(adminClient, requester, shift, targetDriver, request) {
+  const { data: vehicle } = shift.vehicle_id
+    ? await adminClient.from('vehicles').select('plate, name').eq('id', shift.vehicle_id).single()
+    : { data: null }
+  const notifications = []
+
+  if (targetDriver.profile_id && targetDriver.profile_id !== requester.id) {
+    notifications.push({
+      user_id: targetDriver.profile_id,
+      shift_id: shift.id,
+      kind: 'shift_handover_request',
+      priority: 'normal',
+      title: 'Kolega ti nabízí směnu',
+      body: `${requester.full_name} · ${createShiftBody(shift, vehicle)}`,
+      metadata: { shift_id: shift.id, handover_request_id: request.id, event_type: 'shift_handover_request' },
+    })
+  }
+
+  const { data: staffProfiles, error: staffError } = await adminClient
+    .from('profiles')
+    .select('id')
+    .in('role', ['admin', 'dispatcher'])
+    .eq('active', true)
+  if (staffError) throw new Error(staffError.message)
+
+  ;(staffProfiles ?? [])
+    .filter((item) => item.id !== requester.id)
+    .forEach((item) => {
+      notifications.push({
+        user_id: item.id,
+        shift_id: shift.id,
+        kind: 'shift_handover_request',
+        priority: 'normal',
+        title: 'Směna nabídnutá konkrétnímu řidiči',
+        body: `${requester.full_name} → ${targetDriver.display_name} · ${createShiftBody(shift, vehicle)}`,
+        metadata: { shift_id: shift.id, handover_request_id: request.id, event_type: 'shift_handover_request' },
+      })
+    })
+
+  return notifications
+}
+
 async function deliverNotifications(adminClient, notifications) {
   if (notifications.length === 0) {
     return []
@@ -352,6 +394,102 @@ async function deliverNotifications(adminClient, notifications) {
   return rows
 }
 
+async function offerShiftToDriver(adminClient, requester, shiftId, targetDriverId) {
+  if (requester.role !== 'driver') {
+    throw new Error('Směnu může kolegovi nabídnout jen řidič.')
+  }
+
+  const currentDriver = await getActiveDriverForRequester(adminClient, requester)
+  if (currentDriver.id === targetDriverId) {
+    throw new Error('Směnu nejde nabídnout sobě.')
+  }
+
+  const { data: targetDriver, error: targetError } = await adminClient
+    .from('drivers')
+    .select('id, profile_id, display_name, active')
+    .eq('id', targetDriverId)
+    .eq('active', true)
+    .single()
+
+  if (targetError || !targetDriver) {
+    throw new Error('Vybraný kolega nemá aktivní řidičský profil.')
+  }
+
+  const { data: shift, error: shiftError } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', shiftId)
+    .single()
+
+  if (shiftError || !shift) throw new Error('Směna nebyla nalezena.')
+  if (shift.driver_id !== currentDriver.id) throw new Error('Tato směna není přiřazená tobě.')
+  if (shift.driver_response !== 'accepted' || !['confirmed', 'replacement_needed'].includes(shift.status)) {
+    throw new Error('Kolegovi lze nabídnout jen potvrzenou směnu.')
+  }
+
+  await validateDriverAvailabilityForShift(adminClient, targetDriver.id, shift)
+
+  const now = new Date().toISOString()
+  const noteTime = new Intl.DateTimeFormat('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(now))
+  const patch = {
+    status: 'replacement_needed',
+    driver_response: 'accepted',
+    note: appendShiftNote(shift.note, `[${noteTime}] Řidič nabídl směnu konkrétně: ${targetDriver.display_name}.`),
+    updated_by: requester.id,
+    updated_at: now,
+  }
+
+  const { data: updatedShift, error: updateError } = await adminClient
+    .from('shifts')
+    .update(patch)
+    .eq('id', shift.id)
+    .eq('driver_id', currentDriver.id)
+    .select('*')
+    .single()
+  if (updateError || !updatedShift) throw new Error(updateError?.message ?? 'Směnu se nepodařilo nabídnout kolegovi.')
+
+  await adminClient
+    .from('shift_handover_requests')
+    .update({ status: 'cancelled', updated_at: now })
+    .eq('shift_id', shift.id)
+    .eq('status', 'pending')
+
+  const { data: request, error: requestError } = await adminClient
+    .from('shift_handover_requests')
+    .insert([{
+      shift_id: shift.id,
+      from_driver_id: currentDriver.id,
+      target_driver_id: targetDriver.id,
+      status: 'pending',
+      created_by: requester.id,
+      created_at: now,
+      updated_at: now,
+    }])
+    .select('*')
+    .single()
+  if (requestError || !request) throw new Error(requestError?.message ?? 'Nabídku kolegovi se nepodařilo uložit.')
+
+  await adminClient.from('change_log').insert([{
+    id: generateId('log'),
+    entity_type: 'shift',
+    entity_id: shift.id,
+    action: 'driver_targeted_offer',
+    old_data: shift,
+    new_data: { shift: updatedShift, request },
+    user_id: requester.id,
+    created_at: now,
+  }])
+
+  await deliverNotifications(adminClient, await buildTargetedHandoverNotifications(adminClient, requester, updatedShift, targetDriver, request))
+  return { shift: updatedShift, request }
+}
+
 async function takeoverShift(adminClient, requester, shiftId) {
   if (requester.role !== 'driver') {
     throw new Error('Směnu může převzít jen řidič.')
@@ -384,6 +522,19 @@ async function takeoverShift(adminClient, requester, shiftId) {
 
   if (shift.driver_id === currentDriver.id) {
     throw new Error('Tato směna už je přiřazená tobě.')
+  }
+
+  const { data: handoverRequests, error: handoverError } = await adminClient
+    .from('shift_handover_requests')
+    .select('*')
+    .eq('shift_id', shift.id)
+    .eq('status', 'pending')
+
+  if (handoverError) throw new Error(handoverError.message)
+
+  const pendingTargetedRequest = (handoverRequests ?? [])[0] ?? null
+  if (pendingTargetedRequest && pendingTargetedRequest.target_driver_id !== currentDriver.id) {
+    throw new Error('Tato směna je teď nabídnutá konkrétnímu kolegovi.')
   }
 
   const [overlapRes, availabilityRes] = await Promise.all([
@@ -452,6 +603,16 @@ async function takeoverShift(adminClient, requester, shiftId) {
 
   if (logError) {
     throw new Error(logError.message)
+  }
+
+  if (pendingTargetedRequest) {
+    const { error: requestError } = await adminClient
+      .from('shift_handover_requests')
+      .update({ status: 'accepted', responded_at: now, updated_at: now })
+      .eq('id', pendingTargetedRequest.id)
+      .eq('status', 'pending')
+
+    if (requestError) throw new Error(requestError.message)
   }
 
   const notifications = await buildShiftNotifications(adminClient, 'shift_takeover', requester, shift, updatedShift)
@@ -779,6 +940,69 @@ async function approveShiftApplication(adminClient, requester, applicationId) {
   return { application: approvedRes.data, shift: updatedShift }
 }
 
+async function rejectHandoverRequest(adminClient, requester, requestId) {
+  if (requester.role !== 'driver') {
+    throw new Error('Nabídku směny může odmítnout jen řidič.')
+  }
+
+  const currentDriver = await getActiveDriverForRequester(adminClient, requester)
+  const { data: request, error: requestError } = await adminClient
+    .from('shift_handover_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (requestError || !request) throw new Error('Nabídka nebyla nalezena.')
+  if (request.target_driver_id !== currentDriver.id) throw new Error('Tato nabídka není určená tobě.')
+  if (request.status !== 'pending') throw new Error('Tato nabídka už není čekající.')
+
+  const now = new Date().toISOString()
+  const { data: updatedRequest, error: updateError } = await adminClient
+    .from('shift_handover_requests')
+    .update({ status: 'rejected', responded_at: now, updated_at: now })
+    .eq('id', request.id)
+    .eq('status', 'pending')
+    .select('*')
+    .single()
+  if (updateError || !updatedRequest) throw new Error(updateError?.message ?? 'Nabídku se nepodařilo odmítnout.')
+
+  const { data: shift } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', request.shift_id)
+    .single()
+
+  await adminClient.from('change_log').insert([{
+    id: generateId('log'),
+    entity_type: 'shift',
+    entity_id: request.shift_id,
+    action: 'handover_rejected',
+    old_data: request,
+    new_data: updatedRequest,
+    user_id: requester.id,
+    created_at: now,
+  }])
+
+  if (shift) {
+    const { data: fromDriver } = await adminClient
+      .from('drivers')
+      .select('profile_id, display_name')
+      .eq('id', request.from_driver_id)
+      .single()
+    await deliverNotifications(adminClient, fromDriver?.profile_id ? [{
+      user_id: fromDriver.profile_id,
+      shift_id: shift.id,
+      kind: 'shift_handover_rejected',
+      priority: 'normal',
+      title: 'Kolega odmítl převzetí směny',
+      body: `${requester.full_name} · ${createShiftBody(shift, null)}`,
+      metadata: { shift_id: shift.id, handover_request_id: request.id, event_type: 'shift_handover_rejected' },
+    }] : [])
+  }
+
+  return updatedRequest
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Metoda není povolená.' })
@@ -880,6 +1104,39 @@ export default async function handler(req, res) {
       sendJson(res, 200, { shift })
     } catch (takeoverError) {
       sendJson(res, 400, { error: takeoverError.message ?? 'Směnu se nepodařilo převzít.' })
+    }
+    return
+  }
+
+  if (body.action === 'offer-shift-to-driver') {
+    const shiftId = body.shiftId?.trim()
+    const targetDriverId = body.targetDriverId?.trim()
+    if (!shiftId || !targetDriverId) {
+      sendJson(res, 400, { error: 'Chybí ID směny nebo kolegy.' })
+      return
+    }
+
+    try {
+      const result = await offerShiftToDriver(adminClient, requester, shiftId, targetDriverId)
+      sendJson(res, 200, result)
+    } catch (offerError) {
+      sendJson(res, 400, { error: offerError.message ?? 'Směnu se nepodařilo nabídnout kolegovi.' })
+    }
+    return
+  }
+
+  if (body.action === 'reject-handover-request') {
+    const requestId = body.requestId?.trim()
+    if (!requestId) {
+      sendJson(res, 400, { error: 'Chybí ID nabídky.' })
+      return
+    }
+
+    try {
+      const request = await rejectHandoverRequest(adminClient, requester, requestId)
+      sendJson(res, 200, { request })
+    } catch (rejectError) {
+      sendJson(res, 400, { error: rejectError.message ?? 'Nabídku se nepodařilo odmítnout.' })
     }
     return
   }

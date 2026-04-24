@@ -244,6 +244,7 @@ export function useShiftApp() {
   const notificationPreferencesList = state.notificationPreferences ?? []
   const notificationEvents = state.notificationEvents ?? []
   const shiftApplications = state.shiftApplications ?? []
+  const shiftHandoverRequests = state.shiftHandoverRequests ?? []
   const notificationPreferences = profile
     ? (notificationPreferencesList.find((item) => item.user_id === profile.id) ?? { user_id: profile.id, ...DEFAULT_NOTIFICATION_PREFERENCES })
     : { user_id: '', ...DEFAULT_NOTIFICATION_PREFERENCES }
@@ -296,9 +297,17 @@ export function useShiftApp() {
     return enrichedShifts.filter((shift) => (
       shift.status === 'replacement_needed' &&
       shift.driver_id !== currentDriver.id &&
+      (
+        !shiftHandoverRequests.some((request) => request.shift_id === shift.id && request.status === 'pending') ||
+        shiftHandoverRequests.some((request) => (
+          request.shift_id === shift.id &&
+          request.status === 'pending' &&
+          request.target_driver_id === currentDriver.id
+        ))
+      ) &&
       new Date(shift.end_at).getTime() >= now
     ))
-  }, [currentDriver, enrichedShifts, profile?.role])
+  }, [currentDriver, enrichedShifts, profile?.role, shiftHandoverRequests])
 
   const openShifts = useMemo(() => {
     const now = Date.now()
@@ -320,6 +329,15 @@ export function useShiftApp() {
     if (!currentDriver) return []
     return shiftApplications.filter((item) => item.driver_id === currentDriver.id)
   }, [currentDriver, shiftApplications])
+
+  const pendingHandoverByShiftId = useMemo(() => {
+    return shiftHandoverRequests
+      .filter((item) => item.status === 'pending')
+      .reduce((acc, item) => {
+        acc[item.shift_id] = item
+        return acc
+      }, {})
+  }, [shiftHandoverRequests])
 
   const todayShifts = useMemo(() => {
     const from = startOfDay(new Date())
@@ -929,7 +947,7 @@ export function useShiftApp() {
         }
 
         const isStaff = ['admin', 'dispatcher'].includes(currentProfile?.role ?? '')
-        const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
+        const [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, handoverRequestsRes, changeLogRes, preferencesRes, notificationEventsRes] = await withTimeout(
           Promise.all([
             supabase.from('profiles').select('*').order('full_name'),
             supabase.from('drivers').select('*').order('display_name'),
@@ -937,6 +955,7 @@ export function useShiftApp() {
             supabase.from('shifts').select('*').order('start_at'),
             supabase.from('driver_availability').select('*').order('from_date'),
             supabase.from('shift_applications').select('*').order('created_at', { ascending: false }),
+            supabase.from('shift_handover_requests').select('*').order('created_at', { ascending: false }),
             isStaff
               ? supabase.from('change_log').select('*').order('created_at', { ascending: false }).limit(100)
               : Promise.resolve({ data: [], error: null }),
@@ -951,7 +970,7 @@ export function useShiftApp() {
           DATA_LOAD_TIMEOUT_MS
         )
 
-        const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, changeLogRes, preferencesRes, notificationEventsRes]
+        const results = [profilesRes, driversRes, vehiclesRes, shiftsRes, availabilityRes, applicationsRes, handoverRequestsRes, changeLogRes, preferencesRes, notificationEventsRes]
         const firstError = results.find((item) => item.error)?.error
         if (firstError) {
           setError(firstError.message)
@@ -965,6 +984,7 @@ export function useShiftApp() {
           shifts: shiftsRes.data ?? [],
           availability: availabilityRes.data ?? [],
           shiftApplications: applicationsRes.data ?? [],
+          shiftHandoverRequests: handoverRequestsRes.data ?? [],
           changeLog: changeLogRes.data ?? [],
           notificationPreferences: preferencesRes.data ?? [],
           notificationEvents: notificationEventsRes.data ?? [],
@@ -1232,6 +1252,11 @@ export function useShiftApp() {
       setDemoState((current) => ({
         ...current,
         shifts: current.shifts.map((item) => (item.id === shift.id ? { ...item, ...patch } : item)),
+        shiftHandoverRequests: (current.shiftHandoverRequests ?? []).map((item) => (
+          item.shift_id === shift.id && item.status === 'pending'
+            ? { ...item, status: item.target_driver_id === currentDriver.id ? 'accepted' : 'cancelled', responded_at: now, updated_at: now }
+            : item
+        )),
       }))
       await appendLog({ entity_type: 'shift', entity_id: shift.id, action: actionConfig.logAction, old_data: shift, new_data: patch, user_id: profile?.id ?? null })
       setFlash('success', actionConfig.successMessage)
@@ -1254,6 +1279,108 @@ export function useShiftApp() {
     await fetchSupabaseData()
     setFlash('success', actionConfig.successMessage)
     setBusy(false)
+  }
+
+  async function handleOfferShiftToDriver(shift, targetDriverId) {
+    if (!currentDriver) {
+      setFlash('error', 'K účtu není připojený řidičský profil.')
+      return
+    }
+
+    const targetDriver = drivers.find((item) => item.id === targetDriverId)
+    if (!targetDriver || !targetDriver.active) {
+      setFlash('error', 'Vybraný kolega není aktivní řidič.')
+      return
+    }
+    if (targetDriver.id === currentDriver.id) {
+      setFlash('error', 'Směnu nejde nabídnout sobě.')
+      return
+    }
+    if (shift.driver_id !== currentDriver.id || shift.driver_response !== 'accepted' || !['confirmed', 'replacement_needed'].includes(shift.status)) {
+      setFlash('error', 'Kolegovi lze nabídnout jen tvoji potvrzenou směnu.')
+      return
+    }
+
+    const validation = validateShiftTakeover({ ...shift, driver_id: shift.driver_id, status: 'replacement_needed' })
+    const targetOverlap = enrichedShifts.find((item) => (
+      item.id !== shift.id &&
+      item.driver_id === targetDriver.id &&
+      item.status !== 'cancelled' &&
+      overlaps(item.start_at, item.end_at, shift.start_at, shift.end_at)
+    ))
+    if (targetOverlap) {
+      setFlash('error', 'Vybraný kolega už má v tomto čase jinou směnu.')
+      return
+    }
+    const targetAvailability = availability.find((item) => (
+      item.driver_id === targetDriver.id &&
+      item.availability_type !== 'available' &&
+      overlaps(item.from_date, item.to_date, shift.start_at, shift.end_at)
+    ))
+    if (targetAvailability) {
+      setFlash('error', `Vybraný kolega má v tomto termínu blokaci: ${AVAILABILITY_LABEL[targetAvailability.availability_type]}.`)
+      return
+    }
+
+    if (validation && !validation.includes('Tato směna už je přiřazená tobě.')) {
+      setFlash('error', validation)
+      return
+    }
+
+    setBusy(true)
+    const now = new Date().toISOString()
+    const patch = {
+      driver_response: 'accepted',
+      status: 'replacement_needed',
+      note: appendShiftNote(shift.note, `[${formatDateTime(now)}] Řidič nabídl směnu konkrétně: ${targetDriver.display_name}.`),
+      updated_by: profile?.id ?? null,
+      updated_at: now,
+    }
+
+    if (mode === 'demo') {
+      const request = {
+        id: generateId('handover'),
+        shift_id: shift.id,
+        from_driver_id: currentDriver.id,
+        target_driver_id: targetDriver.id,
+        status: 'pending',
+        note: '',
+        created_by: profile?.id ?? null,
+        responded_at: null,
+        created_at: now,
+        updated_at: now,
+      }
+      setDemoState((current) => ({
+        ...current,
+        shifts: current.shifts.map((item) => (item.id === shift.id ? { ...item, ...patch } : item)),
+        shiftHandoverRequests: [
+          request,
+          ...(current.shiftHandoverRequests ?? []).map((item) => (
+            item.shift_id === shift.id && item.status === 'pending'
+              ? { ...item, status: 'cancelled', updated_at: now }
+              : item
+          )),
+        ],
+      }))
+      await appendLog({ entity_type: 'shift', entity_id: shift.id, action: 'driver_targeted_offer', old_data: shift, new_data: { ...shift, ...patch, request }, user_id: profile?.id ?? null })
+      setFlash('success', `Směna byla nabídnuta řidiči ${targetDriver.display_name}.`)
+      setBusy(false)
+      return
+    }
+
+    try {
+      await callNotificationApi({
+        action: 'offer-shift-to-driver',
+        shiftId: shift.id,
+        targetDriverId,
+      })
+      await fetchSupabaseData()
+      setFlash('success', `Směna byla nabídnuta řidiči ${targetDriver.display_name}.`)
+    } catch (offerError) {
+      setFlash('error', offerError.message ?? 'Směnu se nepodařilo nabídnout kolegovi.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   function validateShiftTakeover(shift) {
@@ -1325,6 +1452,42 @@ export function useShiftApp() {
     await fetchSupabaseData()
     setFlash('success', 'Směna je převzatá a dispečink byl upozorněn.')
     setBusy(false)
+  }
+
+  async function handleRejectHandoverRequest(request) {
+    if (!currentDriver || request.target_driver_id !== currentDriver.id) {
+      setFlash('error', 'Tato nabídka není určená tobě.')
+      return
+    }
+
+    setBusy(true)
+    const now = new Date().toISOString()
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        shiftHandoverRequests: (current.shiftHandoverRequests ?? []).map((item) => (
+          item.id === request.id ? { ...item, status: 'rejected', responded_at: now, updated_at: now } : item
+        )),
+      }))
+      await appendLog({ entity_type: 'shift', entity_id: request.shift_id, action: 'handover_rejected', old_data: request, new_data: { ...request, status: 'rejected' }, user_id: profile?.id ?? null })
+      setFlash('success', 'Nabídka směny byla odmítnuta.')
+      setBusy(false)
+      return
+    }
+
+    try {
+      await callNotificationApi({
+        action: 'reject-handover-request',
+        requestId: request.id,
+      })
+      await fetchSupabaseData()
+      setFlash('success', 'Nabídka směny byla odmítnuta.')
+    } catch (rejectError) {
+      setFlash('error', rejectError.message ?? 'Nabídku se nepodařilo odmítnout.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function handleApplyOpenShift(shift) {
@@ -2136,6 +2299,7 @@ export function useShiftApp() {
     handleLogin,
     handleLogout,
     handleNotificationAction,
+    handleOfferShiftToDriver,
     handleSaveAvailability,
     handleSaveDriver,
     handleSaveProfile,
@@ -2143,6 +2307,7 @@ export function useShiftApp() {
     handleSaveVehicle,
     handleShiftResponse,
     handleTakeoverShift,
+    handleRejectHandoverRequest,
     handleToggleDriverActive,
     handleToggleProfileActive,
     enablePushNotifications,
@@ -2157,6 +2322,7 @@ export function useShiftApp() {
     notifications,
     notificationHistoryFilter,
     openShifts,
+    pendingHandoverByShiftId,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -2170,6 +2336,7 @@ export function useShiftApp() {
     notificationPreferences,
     shiftApplications,
     shiftApplicationsByShiftId,
+    shiftHandoverRequests,
     popupNotifications,
     retrySupabaseSession,
     session,

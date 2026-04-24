@@ -33,6 +33,7 @@ function App() {
     handleLogin,
     handleLogout,
     handleNotificationAction,
+    handleOfferShiftToDriver,
     handleSaveNotificationPreferences,
     handleSaveAvailability,
     handleSaveDriver,
@@ -41,6 +42,7 @@ function App() {
     handleSaveVehicle,
     handleShiftResponse,
     handleTakeoverShift,
+    handleRejectHandoverRequest,
     handleToggleDriverActive,
     handleToggleProfileActive,
     loading,
@@ -56,6 +58,7 @@ function App() {
     notifications,
     notificationPreferences,
     openShifts,
+    pendingHandoverByShiftId,
     openAvailabilityForEdit,
     openDriverForEdit,
     openProfileForEdit,
@@ -68,6 +71,7 @@ function App() {
     replacementOffers,
     shiftApplications,
     shiftApplicationsByShiftId,
+    shiftHandoverRequests,
     popupNotifications,
     retrySupabaseSession,
     session,
@@ -270,8 +274,11 @@ function App() {
               onNotificationPreferenceSave={handleSaveNotificationPreferences}
               onNotificationRead={markNotificationRead}
               onApplyOpenShift={handleApplyOpenShift}
+              onOfferShiftToDriver={handleOfferShiftToDriver}
+              onRejectHandoverRequest={handleRejectHandoverRequest}
               upcomingShift={upcomingShift}
               visibleShifts={visibleShifts}
+              drivers={drivers}
               availability={availability}
               onRespond={handleShiftResponse}
               onTakeoverShift={handleTakeoverShift}
@@ -282,6 +289,8 @@ function App() {
               driversMap={driversMap}
               vehiclesMap={vehiclesMap}
               replacementOffers={replacementOffers}
+              pendingHandoverByShiftId={pendingHandoverByShiftId}
+              shiftHandoverRequests={shiftHandoverRequests}
               busy={busy}
             />
           ) : (

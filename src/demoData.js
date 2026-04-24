@@ -247,6 +247,7 @@ export const demoNotificationEvents = [
 ]
 
 export const demoShiftApplications = []
+export const demoShiftHandoverRequests = []
 
 export const demoUsers = [
   {
@@ -281,4 +282,5 @@ export const emptyState = {
   notificationPreferences: demoNotificationPreferences,
   notificationEvents: demoNotificationEvents,
   shiftApplications: demoShiftApplications,
+  shiftHandoverRequests: demoShiftHandoverRequests,
 }
