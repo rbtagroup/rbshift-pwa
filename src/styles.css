@@ -1235,28 +1235,39 @@ button:disabled {
   }
 
   .driver-week-strip {
-    display: flex;
-    gap: 0.38rem;
-    overflow-x: auto;
-    margin-inline: -0.12rem;
-    padding: 0.05rem 0.12rem 0.42rem;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-  }
-
-  .driver-week-strip::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.22rem;
+    margin-bottom: 0.52rem;
   }
 
   .driver-day-button {
-    flex: 0 0 64px;
-    min-height: 58px;
-    border-radius: 15px;
-    scroll-snap-align: start;
+    min-width: 0;
+    min-height: 50px;
+    padding: 0.4rem 0.18rem;
+    border-radius: 12px;
+    gap: 0.12rem;
   }
 
   .driver-day-button strong {
-    font-size: 1rem;
+    font-size: 0.92rem;
+  }
+
+  .driver-day-button span {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.68rem;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .driver-day-button i {
+    top: 0.28rem;
+    right: 0.28rem;
+    width: 6px;
+    height: 6px;
+    box-shadow: 0 0 0 3px rgba(245, 197, 24, 0.12);
   }
 
   .driver-filter-row {
@@ -1449,5 +1460,23 @@ button:disabled {
   .stat-card,
   .auth-card {
     padding: 0.58rem;
+  }
+
+  .driver-week-strip {
+    gap: 0.16rem;
+  }
+
+  .driver-day-button {
+    min-height: 46px;
+    padding-inline: 0.08rem;
+    border-radius: 10px;
+  }
+
+  .driver-day-button span {
+    font-size: 0.62rem;
+  }
+
+  .driver-day-button strong {
+    font-size: 0.84rem;
   }
 }
