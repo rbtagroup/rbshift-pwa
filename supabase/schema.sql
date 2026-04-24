@@ -220,10 +220,6 @@ for select using (
   and driver_id is distinct from public.current_driver_id()
 );
 
-create policy "shifts_driver_update_response" on public.shifts
-for update using (driver_id = public.current_driver_id())
-with check (driver_id = public.current_driver_id());
-
 create policy "availability_staff_all" on public.driver_availability
 for all using (public.current_role() in ('admin', 'dispatcher'))
 with check (public.current_role() in ('admin', 'dispatcher'));

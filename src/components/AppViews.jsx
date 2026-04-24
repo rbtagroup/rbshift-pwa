@@ -842,6 +842,7 @@ function NotificationsSection({
               </div>
               <div className="button-row wrap">
                 <StatusPill tone={item.priority === 'critical' ? 'danger' : 'info'}>{item.priority === 'critical' ? 'Kritické' : 'Běžné'}</StatusPill>
+                {item.shift_id ? <button className="ghost-button" onClick={() => onNotificationAction(item)}>Otevřít</button> : null}
                 {!item.read_at ? <button className="ghost-button" onClick={() => onNotificationRead(item.id)}>Označit jako přečtené</button> : null}
               </div>
             </div>

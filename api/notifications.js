@@ -121,6 +121,11 @@ function rangesOverlap(startA, endA, startB, endB) {
   return new Date(startA) < new Date(endB) && new Date(startB) < new Date(endA)
 }
 
+function appendShiftNote(note, line) {
+  const trimmed = note?.trim()
+  return trimmed ? `${trimmed}\n${line}` : line
+}
+
 async function loadShiftRelations(adminClient, previousShift, nextShift) {
   const driverIds = [previousShift?.driver_id, nextShift?.driver_id].filter(Boolean)
   const vehicleIds = [previousShift?.vehicle_id, nextShift?.vehicle_id].filter(Boolean)
@@ -455,6 +460,144 @@ async function takeoverShift(adminClient, requester, shiftId) {
   return updatedShift
 }
 
+async function updateShiftResponse(adminClient, requester, shiftId, response) {
+  if (requester.role !== 'driver') {
+    throw new Error('Na směnu může odpovědět jen řidič.')
+  }
+
+  const { data: currentDriver, error: driverError } = await adminClient
+    .from('drivers')
+    .select('id, display_name, active')
+    .eq('profile_id', requester.id)
+    .eq('active', true)
+    .single()
+
+  if (driverError || !currentDriver) {
+    throw new Error('K účtu není připojený aktivní řidičský profil.')
+  }
+
+  const { data: shift, error: shiftError } = await adminClient
+    .from('shifts')
+    .select('*')
+    .eq('id', shiftId)
+    .single()
+
+  if (shiftError || !shift) {
+    throw new Error('Směna nebyla nalezena.')
+  }
+
+  if (shift.driver_id !== currentDriver.id) {
+    throw new Error('Tato směna není přiřazená tobě.')
+  }
+
+  if (['cancelled', 'completed'].includes(shift.status)) {
+    throw new Error('U zrušené nebo dokončené směny už nejde měnit reakci.')
+  }
+
+  const now = new Date().toISOString()
+  const noteTime = new Intl.DateTimeFormat('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(now))
+
+  const actionConfig = response === 'accepted'
+    ? {
+        patch: {
+          driver_response: 'accepted',
+          status: 'confirmed',
+          updated_by: requester.id,
+          updated_at: now,
+        },
+        logAction: 'response',
+        eventType: 'shift_response',
+      }
+    : response === 'declined'
+      ? {
+          patch: {
+            driver_response: 'declined',
+            status: 'replacement_needed',
+            updated_by: requester.id,
+            updated_at: now,
+          },
+          logAction: 'response',
+          eventType: 'shift_response',
+        }
+      : response === 'release'
+        ? {
+            patch: {
+              driver_response: 'declined',
+              status: 'replacement_needed',
+              note: appendShiftNote(shift.note, `[${noteTime}] Řidič zrušil už potvrzenou směnu a požádal o přeobsazení.`),
+              updated_by: requester.id,
+              updated_at: now,
+            },
+            logAction: 'driver_release',
+            eventType: 'shift_release',
+          }
+        : response === 'offer'
+          ? {
+              patch: {
+                driver_response: 'declined',
+                status: 'replacement_needed',
+                note: appendShiftNote(shift.note, `[${noteTime}] Řidič nabídl směnu k přeobsazení.`),
+                updated_by: requester.id,
+                updated_at: now,
+              },
+              logAction: 'driver_offer',
+              eventType: 'shift_offer',
+            }
+          : null
+
+  if (!actionConfig) {
+    throw new Error('Neznámá reakce na směnu.')
+  }
+
+  if (['accepted', 'declined'].includes(response) && (shift.driver_response !== 'pending' || shift.status !== 'planned')) {
+    throw new Error('Na tuto směnu už bylo odpovězeno.')
+  }
+
+  if (['release', 'offer'].includes(response) && (shift.driver_response !== 'accepted' || shift.status !== 'confirmed')) {
+    throw new Error('Přeobsazení lze řešit jen u potvrzené směny.')
+  }
+
+  const { data: updatedShift, error: updateError } = await adminClient
+    .from('shifts')
+    .update(actionConfig.patch)
+    .eq('id', shift.id)
+    .eq('driver_id', currentDriver.id)
+    .eq('status', shift.status)
+    .eq('driver_response', shift.driver_response)
+    .select('*')
+    .single()
+
+  if (updateError || !updatedShift) {
+    throw new Error(updateError?.message ?? 'Reakci na směnu se nepodařilo uložit.')
+  }
+
+  const { error: logError } = await adminClient.from('change_log').insert([{
+    id: generateId('log'),
+    entity_type: 'shift',
+    entity_id: shift.id,
+    action: actionConfig.logAction,
+    old_data: shift,
+    new_data: updatedShift,
+    user_id: requester.id,
+    created_at: now,
+  }])
+
+  if (logError) {
+    throw new Error(logError.message)
+  }
+
+  const notifications = await buildShiftNotifications(adminClient, actionConfig.eventType, requester, shift, updatedShift)
+  await deliverNotifications(adminClient, notifications)
+
+  return updatedShift
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     sendJson(res, 405, { error: 'Metoda není povolená.' })
@@ -556,6 +699,23 @@ export default async function handler(req, res) {
       sendJson(res, 200, { shift })
     } catch (takeoverError) {
       sendJson(res, 400, { error: takeoverError.message ?? 'Směnu se nepodařilo převzít.' })
+    }
+    return
+  }
+
+  if (body.action === 'update-shift-response') {
+    const shiftId = body.shiftId?.trim()
+    const response = body.response?.trim()
+    if (!shiftId || !response) {
+      sendJson(res, 400, { error: 'Chybí ID směny nebo reakce řidiče.' })
+      return
+    }
+
+    try {
+      const shift = await updateShiftResponse(adminClient, requester, shiftId, response)
+      sendJson(res, 200, { shift })
+    } catch (responseError) {
+      sendJson(res, 400, { error: responseError.message ?? 'Reakci na směnu se nepodařilo uložit.' })
     }
     return
   }

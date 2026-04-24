@@ -890,6 +890,17 @@ export function useShiftApp() {
 
     const previous = shiftForm.id ? shifts.find((item) => item.id === shiftForm.id) : null
     const nextShiftId = shiftForm.id || generateUuid()
+    const requiresDriverReconfirmation = previous && !['cancelled', 'completed'].includes(payload.status) && (
+      previous.driver_id !== payload.driver_id ||
+      previous.vehicle_id !== payload.vehicle_id ||
+      new Date(previous.start_at).getTime() !== new Date(payload.start_at).getTime() ||
+      new Date(previous.end_at).getTime() !== new Date(payload.end_at).getTime()
+    )
+
+    if (requiresDriverReconfirmation) {
+      payload.status = 'planned'
+      payload.driver_response = 'pending'
+    }
 
     if (mode === 'demo') {
       setDemoState((current) => {
@@ -1045,22 +1056,18 @@ export function useShiftApp() {
       return
     }
 
-    const { error: updateError } = await supabase.from('shifts').update(patch).eq('id', shift.id)
-    if (updateError) {
-      setFlash('error', updateError.message)
+    try {
+      await callNotificationApi({
+        action: 'update-shift-response',
+        shiftId: shift.id,
+        response,
+      })
+    } catch (responseError) {
+      setFlash('error', responseError.message ?? 'Reakci na směnu se nepodařilo uložit.')
       setBusy(false)
       return
     }
-    await appendLog({ entity_type: 'shift', entity_id: shift.id, action: actionConfig.logAction, old_data: shift, new_data: patch, user_id: profile?.id ?? null })
-    await dispatchShiftEvent(
-      actionConfig.logAction === 'response'
-        ? 'shift_response'
-        : actionConfig.logAction === 'driver_release'
-          ? 'shift_release'
-          : 'shift_offer',
-      shift,
-      { ...shift, ...patch }
-    )
+
     await fetchSupabaseData()
     setFlash('success', actionConfig.successMessage)
     setBusy(false)
@@ -1765,10 +1772,16 @@ export function useShiftApp() {
       void markNotificationRead(notification.id)
     }
 
-    if (notification.shiftId) {
-      const targetShift = enrichedShifts.find((item) => item.id === notification.shiftId)
+    const shiftId = notification.shiftId ?? notification.shift_id ?? notification.metadata?.shift_id
+    if (shiftId) {
+      const targetShift = enrichedShifts.find((item) => item.id === shiftId)
       if (targetShift && profile?.role !== 'driver') {
         openShiftForEdit(targetShift)
+        return
+      }
+
+      if (profile?.role === 'driver') {
+        setActiveTab('my-shifts')
         return
       }
     }
