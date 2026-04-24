@@ -38,6 +38,7 @@ html, body, #root {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 button, input, select, textarea {
@@ -58,6 +59,10 @@ input, select, textarea {
   padding: 0.85rem 0.95rem;
   outline: none;
   transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+select {
+  min-height: 46px;
 }
 
 input[type="datetime-local"] {
@@ -86,6 +91,7 @@ h1, h2, h3, p {
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 1.2rem;
 }
 
@@ -581,6 +587,19 @@ button:disabled {
   min-width: 0;
 }
 
+.list-card > div,
+.panel-header > div,
+.hero-card > div {
+  min-width: 0;
+}
+
+.list-card p,
+.list-card strong,
+.panel-header p,
+.profile-card span {
+  overflow-wrap: anywhere;
+}
+
 .list-card.compact {
   padding: 0.85rem 0.95rem;
 }
@@ -661,20 +680,22 @@ button:disabled {
 
 @media (max-width: 720px) {
   .app-shell {
-    padding: 0.55rem;
+    padding: 0.5rem 0.5rem calc(4.7rem + env(safe-area-inset-bottom));
   }
 
   .topbar {
-    margin-bottom: 0.5rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.45rem;
   }
 
   .topbar-actions {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    justify-content: flex-end;
     gap: 0.45rem;
   }
 
-  .topbar,
   .hero-card,
   .list-card,
   .panel-header,
@@ -693,12 +714,13 @@ button:disabled {
 
   .topbar h1,
   .auth-card h1 {
-    font-size: 2rem;
+    font-size: 1.55rem;
+    line-height: 1;
   }
 
   .brand-logo {
-    width: 64px;
-    height: 64px;
+    width: 54px;
+    height: 54px;
   }
 
   .profile-card,
@@ -706,8 +728,8 @@ button:disabled {
   .hero-card,
   .stat-card,
   .auth-card {
-    border-radius: 18px;
-    padding: 0.72rem;
+    border-radius: 15px;
+    padding: 0.66rem;
   }
 
   .nav-button {
@@ -717,18 +739,25 @@ button:disabled {
 
   .content {
     order: 1;
-    gap: 0.75rem;
+    gap: 0.58rem;
   }
 
   .mobile-nav {
     display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 18;
-    gap: 0.55rem;
+    position: fixed;
+    z-index: 30;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    gap: 0.35rem;
     overflow-x: auto;
-    padding: 0.15rem 0 0.25rem;
-    margin: -0.1rem 0 0.1rem;
+    padding: 0.4rem;
+    margin: 0;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 22px;
+    background: rgba(7, 16, 28, 0.94);
+    box-shadow: 0 18px 42px rgba(2, 8, 23, 0.45);
+    backdrop-filter: blur(14px);
     scrollbar-width: none;
   }
 
@@ -737,29 +766,44 @@ button:disabled {
   }
 
   .mobile-nav-button {
-    flex: 0 0 auto;
+    flex: 1 0 auto;
     border-radius: 999px;
     border: 1px solid var(--border);
-    background: rgba(11, 18, 32, 0.94);
+    background: rgba(15, 23, 42, 0.86);
     color: var(--text);
-    padding: 0.62rem 0.82rem;
-    font-size: 0.92rem;
+    padding: 0.58rem 0.72rem;
+    font-size: 0.86rem;
     line-height: 1;
     white-space: nowrap;
-    box-shadow: 0 8px 24px rgba(2, 8, 23, 0.2);
+    min-height: 40px;
   }
 
   .mobile-nav-more {
     margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .mobile-nav-more .mobile-nav-button {
+    width: 100%;
+  }
+
+  .mobile-nav-menu {
+    right: 0;
+    top: auto;
+    bottom: calc(100% + 0.5rem);
+    max-height: min(60vh, 360px);
+    overflow: auto;
   }
 
   .form-grid,
   .filters-grid {
     grid-template-columns: 1fr;
+    gap: 0.55rem;
   }
 
   .button-row {
     flex-direction: column;
+    gap: 0.45rem;
   }
 
   .panel-header .muted {
@@ -788,24 +832,114 @@ button:disabled {
     font-size: 16px;
   }
 
+  input,
+  select,
+  textarea {
+    min-height: 43px;
+    border-radius: 12px;
+    padding: 0.62rem 0.72rem;
+  }
+
+  textarea {
+    min-height: 88px;
+  }
+
   .primary-button,
   .ghost-button,
   .danger-button {
-    padding: 0.8rem 0.95rem;
+    min-height: 42px;
+    border-radius: 12px;
+    padding: 0.62rem 0.82rem;
   }
 
   label {
-    gap: 0.35rem;
-    font-size: 0.9rem;
+    gap: 0.28rem;
+    font-size: 0.84rem;
   }
 
   .list-card {
-    padding: 0.82rem 0.88rem;
+    gap: 0.55rem;
+    padding: 0.62rem 0.68rem;
+    border-radius: 14px;
   }
 
   .list-card strong,
   .panel h3,
   .hero-card h2 {
-    font-size: 0.96rem;
+    font-size: 0.94rem;
+  }
+
+  .stack-xl { gap: 0.62rem; }
+  .stack-lg { gap: 0.55rem; }
+  .stack-md { gap: 0.48rem; }
+
+  .grid-2,
+  .grid-main,
+  .report-grid {
+    gap: 0.62rem;
+  }
+
+  .panel-header {
+    gap: 0.45rem;
+    margin-bottom: 0.62rem;
+  }
+
+  .day-group {
+    padding-top: 0.7rem;
+  }
+
+  .day-title {
+    margin-bottom: 0.5rem;
+  }
+
+  .pill {
+    padding: 0.24rem 0.52rem;
+    font-size: 0.76rem;
+  }
+
+  .empty-state,
+  .banner {
+    border-radius: 14px;
+    padding: 0.7rem 0.78rem;
+  }
+
+  .info-row {
+    padding: 0.62rem 0;
+    gap: 0.6rem;
+  }
+
+  .checkbox-item {
+    padding: 0.55rem 0.65rem;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  .app-shell {
+    padding-inline: 0.42rem;
+  }
+
+  .topbar-actions .pill {
+    display: none;
+  }
+
+  .mobile-nav {
+    left: 0.35rem;
+    right: 0.35rem;
+    padding: 0.32rem;
+    border-radius: 18px;
+  }
+
+  .mobile-nav-button {
+    padding-inline: 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  .profile-card,
+  .panel,
+  .hero-card,
+  .stat-card,
+  .auth-card {
+    padding: 0.58rem;
   }
 }
