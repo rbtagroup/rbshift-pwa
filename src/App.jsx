@@ -120,8 +120,8 @@ function App() {
       ]
 
   const mobilePrimaryIds = profile?.role === 'driver'
-    ? ['today', 'open-shifts', 'my-shifts']
-    : ['dashboard', 'coverage', 'shifts', 'problems']
+    ? ['today', 'notifications', 'open-shifts', 'my-shifts']
+    : ['dashboard', 'notifications', 'coverage', 'shifts']
   const mobilePrimaryNav = nav.filter((item) => mobilePrimaryIds.includes(item.id))
   const mobileOverflowNav = nav.filter((item) => !mobilePrimaryIds.includes(item.id))
 
@@ -215,7 +215,7 @@ function App() {
                   aria-expanded={mobileNavOpen}
                   aria-haspopup="menu"
                 >
-                  Více
+                  {mobileOverflowNav.some((item) => item.id === activeTab) ? nav.find((item) => item.id === activeTab)?.label : 'Více'}
                 </button>
                 {mobileNavOpen ? (
                   <div className="mobile-nav-menu" role="menu">
