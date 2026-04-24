@@ -11,22 +11,25 @@ import {
   formatTime,
 } from '../utils'
 
-function getDriverShiftGroup(shift) {
-  const today = new Date()
-  const tomorrow = new Date()
-  tomorrow.setDate(today.getDate() + 1)
-  const shiftDate = new Date(shift.start_at)
-  const todayKey = today.toISOString().slice(0, 10)
-  const tomorrowKey = tomorrow.toISOString().slice(0, 10)
-  const shiftKey = shiftDate.toISOString().slice(0, 10)
-  const todayStart = new Date(todayKey).getTime()
-  const shiftStart = new Date(shiftKey).getTime()
-  const daysAhead = Math.floor((shiftStart - todayStart) / 86400000)
+function getLocalDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
-  if (shiftKey === todayKey) return 'Dnes'
-  if (shiftKey === tomorrowKey) return 'Zítra'
-  if (daysAhead >= 0 && daysAhead < 7) return 'Tento týden'
-  return 'Později'
+function addDays(date, days) {
+  const nextDate = new Date(date)
+  nextDate.setDate(nextDate.getDate() + days)
+  return nextDate
+}
+
+function getDriverShiftTone(shift) {
+  if (shift.status === 'replacement_needed') return 'offered'
+  if (shift.driver_response === 'accepted') return 'accepted'
+  if (shift.driver_response === 'declined') return 'declined'
+  return 'pending'
 }
 
 export function DriverView({
@@ -65,17 +68,56 @@ export function DriverView({
   busy,
 }) {
   const [handoverTargets, setHandoverTargets] = useState({})
+  const [shiftTimeline, setShiftTimeline] = useState('upcoming')
+  const [shiftFilter, setShiftFilter] = useState('week')
+  const [selectedShiftDay, setSelectedShiftDay] = useState(() => getLocalDateKey(new Date()))
   const myAvailability = availability.filter((item) => item.driver_id === currentDriver?.id)
   const handoverCandidates = drivers.filter((driver) => driver.active && driver.id !== currentDriver?.id)
   const pendingShiftCount = visibleShifts.filter((shift) => shift.driver_response === 'pending').length
   const offeredByMeCount = visibleShifts.filter((shift) => shift.driver_response === 'accepted' && shift.status === 'replacement_needed').length
   const actionCount = pendingShiftCount + replacementOffers.length + notifications.filter((item) => item.tone !== 'info').length
   const nextShiftDate = visibleShifts[1]?.start_at ? formatDate(visibleShifts[1].start_at, { weekday: 'long' }) : 'žádná další směna'
-  const groupedDriverShifts = visibleShifts.reduce((acc, shift) => {
-    const group = getDriverShiftGroup(shift)
-    acc[group] = [...(acc[group] ?? []), shift]
+  const now = new Date()
+  const todayKey = getLocalDateKey(now)
+  const weekEndKey = getLocalDateKey(addDays(now, 6))
+  const nextSevenDays = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(now, index)
+    const key = getLocalDateKey(date)
+    const shifts = visibleShifts.filter((shift) => getLocalDateKey(shift.start_at) === key)
+    return {
+      key,
+      date,
+      shifts,
+      label: index === 0 ? 'Dnes' : index === 1 ? 'Zítra' : formatDate(date, { weekday: 'short' }),
+      hasPending: shifts.some((shift) => shift.driver_response === 'pending'),
+    }
+  })
+  const upcomingDriverShifts = visibleShifts.filter((shift) => new Date(shift.end_at) >= now)
+  const historyDriverShifts = visibleShifts.filter((shift) => new Date(shift.end_at) < now)
+  const baseDriverShifts = shiftTimeline === 'history' ? historyDriverShifts : upcomingDriverShifts
+  const filteredDriverShifts = baseDriverShifts.filter((shift) => {
+    const shiftKey = getLocalDateKey(shift.start_at)
+    if (shiftFilter === 'today') return shiftKey === todayKey
+    if (shiftFilter === 'week') return shiftKey >= todayKey && shiftKey <= weekEndKey
+    if (shiftFilter === 'night') return shift.shift_type === 'N'
+    if (shiftFilter === 'pending') return shift.driver_response === 'pending'
+    if (shiftFilter === 'day') return shiftKey === selectedShiftDay
+    return true
+  })
+  const groupedDriverShifts = filteredDriverShifts.reduce((acc, shift) => {
+    const key = getLocalDateKey(shift.start_at)
+    acc[key] = [...(acc[key] ?? []), shift]
     return acc
   }, {})
+  const groupedDriverShiftKeys = Object.keys(groupedDriverShifts).sort()
+  const weekShiftCount = visibleShifts.filter((shift) => {
+    const shiftKey = getLocalDateKey(shift.start_at)
+    return shiftKey >= todayKey && shiftKey <= weekEndKey
+  }).length
+  const weekPendingCount = visibleShifts.filter((shift) => {
+    const shiftKey = getLocalDateKey(shift.start_at)
+    return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.driver_response === 'pending'
+  }).length
 
   const renderTargetedHandover = (shift) => {
     const pendingRequest = pendingHandoverByShiftId[shift.id]
@@ -307,30 +349,90 @@ export function DriverView({
         <div className="panel-header">
           <div>
             <h3>Moje směny</h3>
-            <p className="muted">Seskupeno podle nejbližších dnů.</p>
+            <p className="muted">Rychlý týdenní přehled a akce jen tam, kde dávají smysl.</p>
           </div>
         </div>
+
+        <div className="driver-shift-summary">
+          <strong>{weekShiftCount} směn tento týden</strong>
+          <span>{weekPendingCount ? `${weekPendingCount} čeká na potvrzení` : 'nic nečeká na potvrzení'}</span>
+          <span>nejbližší: {upcomingShift ? `${formatDate(upcomingShift.start_at, { weekday: 'long' })} ${formatTime(upcomingShift.start_at)}` : 'žádná'}</span>
+        </div>
+
+        <div className="driver-week-strip" aria-label="Týdenní přehled směn">
+          {nextSevenDays.map((day) => (
+            <button
+              className={cx('driver-day-button', selectedShiftDay === day.key && shiftFilter === 'day' && 'active', day.hasPending && 'has-alert')}
+              key={day.key}
+              type="button"
+              onClick={() => {
+                setSelectedShiftDay(day.key)
+                setShiftTimeline('upcoming')
+                setShiftFilter('day')
+              }}
+            >
+              <span>{day.label}</span>
+              <strong>{day.shifts.length}</strong>
+              {day.hasPending ? <i aria-label="Čeká na potvrzení" /> : null}
+            </button>
+          ))}
+        </div>
+
+        <div className="driver-filter-row">
+          <button className={cx('driver-filter-button', shiftTimeline === 'upcoming' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Nadcházející</button>
+          <button className={cx('driver-filter-button', shiftTimeline === 'history' && 'active')} type="button" onClick={() => { setShiftTimeline('history'); setShiftFilter('all') }}>Historie</button>
+          <button className={cx('driver-filter-button', shiftFilter === 'all' && 'active')} type="button" onClick={() => setShiftFilter('all')}>Vše</button>
+          <button className={cx('driver-filter-button', shiftFilter === 'today' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('today') }}>Dnes</button>
+          <button className={cx('driver-filter-button', shiftFilter === 'week' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('week') }}>Týden</button>
+          <button className={cx('driver-filter-button', shiftFilter === 'night' && 'active')} type="button" onClick={() => setShiftFilter('night')}>Noční</button>
+          <button className={cx('driver-filter-button', shiftFilter === 'pending' && 'active')} type="button" onClick={() => { setShiftTimeline('upcoming'); setShiftFilter('pending') }}>Čeká</button>
+        </div>
+
         <div className="stack-lg">
-          {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : ['Dnes', 'Zítra', 'Tento týden', 'Později'].map((group) => (
-            groupedDriverShifts[group]?.length ? (
-              <div className="driver-shift-group" key={group}>
-                <div className="day-title">{group}</div>
+          {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : null}
+          {visibleShifts.length > 0 && groupedDriverShiftKeys.length === 0 ? <EmptyState text="Pro vybraný filtr tu není žádná směna." /> : null}
+          {groupedDriverShiftKeys.map((dayKey) => {
+            const dayShifts = groupedDriverShifts[dayKey]
+            const dayDate = new Date(`${dayKey}T12:00:00`)
+            const pendingCount = dayShifts.filter((shift) => shift.driver_response === 'pending').length
+
+            return (
+              <div className="driver-day-card" key={dayKey}>
+                <div className="driver-day-card-header">
+                  <div>
+                    <strong>{formatDate(dayDate, { weekday: 'long' })}</strong>
+                    <span>{formatDate(dayDate)}</span>
+                  </div>
+                  <StatusPill tone={pendingCount ? 'warning' : 'info'}>
+                    {pendingCount ? `${pendingCount} čeká` : `${dayShifts.length} směn`}
+                  </StatusPill>
+                </div>
                 <div className="stack-md">
-                  {groupedDriverShifts[group].map((shift) => (
-                    <div className={cx('list-card', 'driver-shift-card', shift.driver_response === 'pending' && 'driver-shift-card-attention')} key={shift.id}>
+                  {dayShifts.map((shift) => {
+                    const tone = getDriverShiftTone(shift)
+                    const showActions = shift.driver_response === 'pending' || (shift.driver_response === 'accepted' && ['confirmed', 'replacement_needed'].includes(shift.status))
+
+                    return (
+                      <div className={cx('list-card', 'driver-shift-card', `driver-shift-card-${tone}`)} key={shift.id}>
+                        <span className="driver-shift-status-bar" aria-hidden="true" />
                       <div>
-                        <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {SHIFT_TYPE_LABEL[shift.shift_type]}</strong>
-                        <p>{formatDate(shift.start_at, { weekday: 'long' })} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
+                        <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)}</strong>
+                        <p>{SHIFT_TYPE_LABEL[shift.shift_type]} · {vehiclesMap[shift.vehicle_id]?.plate ?? 'Bez auta'}</p>
                         <p className="muted">{shift.note || 'Bez poznámky'}</p>
-                        {shift.driver_response === 'pending' ? renderOwnShiftActions(shift) : null}
+                        {showActions ? (
+                          shift.driver_response === 'pending'
+                            ? renderOwnShiftActions(shift)
+                            : <details className="driver-inline-details compact"><summary>Možnosti směny</summary><div className="driver-details-body">{renderOwnShiftActions(shift)}</div></details>
+                        ) : null}
                       </div>
                       <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
-            ) : null
-          ))}
+            )
+          })}
         </div>
       </section>
 
