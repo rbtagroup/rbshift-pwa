@@ -103,10 +103,11 @@ function App() {
     dismissPopup,
   } = useShiftApp()
 
+  const driverActionCount = notifications.filter((item) => item.tone !== 'info').length
   const nav = profile?.role === 'driver'
     ? [
         { id: 'today', label: 'Dnes' },
-        { id: 'notifications', label: `Úkoly${unreadNotificationCount ? ` (${unreadNotificationCount})` : ''}` },
+        { id: 'notifications', label: `Úkoly${driverActionCount ? ` (${driverActionCount})` : ''}` },
         { id: 'my-shifts', label: 'Směny' },
         { id: 'open-shifts', label: 'Volné' },
         { id: 'availability', label: 'Dostupnost' },

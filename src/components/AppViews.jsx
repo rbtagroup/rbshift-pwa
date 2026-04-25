@@ -145,8 +145,10 @@ export function DriverView({
   const nextPendingShift = visibleShifts.find((shift) => shift.driver_response === 'pending')
   const daySelectValue = shiftFilter === 'day'
     ? selectedShiftDay
-    : ['today', 'week'].includes(shiftFilter)
-      ? shiftFilter
+    : shiftFilter === 'today'
+      ? todayKey
+      : shiftFilter === 'week'
+        ? 'week'
       : 'week'
 
   const applyAvailabilityPreset = (preset) => {
@@ -517,7 +519,7 @@ export function DriverView({
                 value={daySelectValue}
                 onChange={(event) => {
                   const value = event.target.value
-                  if (value === 'week' || value === 'today') {
+                  if (value === 'week') {
                     setShiftFilter(value)
                     return
                   }
@@ -526,7 +528,6 @@ export function DriverView({
                 }}
               >
                 <option value="week">Celý týden ({weekShiftCount})</option>
-                <option value="today">Dnes</option>
                 {nextSevenDays.map((day) => (
                   <option key={day.key} value={day.key}>
                     {day.label} · {formatDate(day.date)} · {day.shifts.length} směn
