@@ -130,7 +130,7 @@ function App() {
       ]
 
   const mobilePrimaryIds = profile?.role === 'driver'
-    ? ['today', 'notifications', 'my-shifts', 'open-shifts']
+    ? ['today', 'notifications', 'my-shifts', 'open-shifts', 'availability']
     : ['dashboard', 'month', 'notifications', 'shifts']
   const mobilePrimaryNav = nav.filter((item) => mobilePrimaryIds.includes(item.id))
   const mobileOverflowNav = nav.filter((item) => !mobilePrimaryIds.includes(item.id))

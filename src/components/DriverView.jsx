@@ -406,6 +406,7 @@ export function DriverView({
         busy={busy}
         currentDriver={currentDriver}
         onApplyOpenShift={onApplyOpenShift}
+        onShowAvailability={() => onNotificationAction({ targetTab: 'availability' })}
         openShifts={openShifts}
         visibleShifts={visibleShifts}
       />
@@ -826,7 +827,7 @@ function DriverTasksSection({
   )
 }
 
-function OpenShiftsSection({ applications, availability, busy, currentDriver, onApplyOpenShift, openShifts, visibleShifts }) {
+function OpenShiftsSection({ applications, availability, busy, currentDriver, onApplyOpenShift, onShowAvailability, openShifts, visibleShifts }) {
   const applicationsByShiftId = applications.reduce((acc, item) => {
     acc[item.shift_id] = item
     return acc
@@ -855,7 +856,13 @@ function OpenShiftsSection({ applications, availability, busy, currentDriver, on
         </div>
       </div>
       <div className="open-shift-grid">
-        {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny. Jakmile dispečer uvolní směnu, objeví se tady a půjde se na ni přihlásit." /> : openShifts.map((shift) => {
+        {openShifts.length === 0 ? (
+          <EmptyState
+            actionLabel="Zadat dostupnost"
+            onAction={onShowAvailability}
+            text="Momentálně nejsou vypsané žádné volné směny. Jakmile dispečer uvolní směnu, objeví se tady a půjde se na ni přihlásit."
+          />
+        ) : openShifts.map((shift) => {
           const application = applicationsByShiftId[shift.id]
           const suitability = getSuitability(shift)
           return (

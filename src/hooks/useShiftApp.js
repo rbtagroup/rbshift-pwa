@@ -313,7 +313,7 @@ export function useShiftApp() {
     const now = Date.now()
     return enrichedShifts.filter((shift) => (
       !shift.driver_id &&
-      shift.status === 'planned' &&
+      !['cancelled', 'completed'].includes(shift.status) &&
       new Date(shift.end_at).getTime() >= now
     ))
   }, [enrichedShifts])
