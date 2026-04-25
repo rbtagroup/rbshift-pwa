@@ -553,6 +553,164 @@ button:disabled {
 .coverage-warning { background: var(--warning); }
 .coverage-danger { background: var(--danger); }
 
+.month-planner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.month-calendar-panel,
+.month-detail-panel {
+  min-width: 0;
+}
+
+.month-overview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.month-overview > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.62rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.month-overview strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-weekdays,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.month-weekdays {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.month-day-card {
+  position: relative;
+  display: grid;
+  gap: 0.24rem;
+  min-height: 94px;
+  padding: 0.5rem;
+  color: var(--text);
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.month-day-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(245, 197, 24, 0.34);
+}
+
+.month-day-card.selected {
+  border-color: rgba(125, 190, 255, 0.75);
+  box-shadow: 0 0 0 1px rgba(125, 190, 255, 0.28);
+}
+
+.month-day-card.outside {
+  opacity: 0.44;
+}
+
+.month-day-card.has-problems {
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.22), rgba(15, 23, 42, 0.52));
+}
+
+.month-day-number {
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.month-capacity-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 24px;
+  padding: 0.18rem 0.28rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.08);
+  font-size: 0.74rem;
+}
+
+.month-capacity-row small {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.month-capacity-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.month-capacity-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.68rem;
+}
+
+.month-success {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.month-warning {
+  background: rgba(245, 197, 24, 0.14);
+}
+
+.month-danger {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.month-problem-badge {
+  position: absolute;
+  inset: 0.45rem 0.45rem auto auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.28);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.month-detail-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.month-shift-row {
+  align-items: start;
+}
+
 .coverage-shift {
   display: grid;
   gap: 0.5rem;
@@ -1322,6 +1480,7 @@ button:disabled {
 @media (max-width: 1180px) {
   .grid-main,
   .grid-2,
+  .month-planner,
   .driver-dashboard-grid,
   .open-shift-grid,
   .report-grid,
@@ -1336,6 +1495,10 @@ button:disabled {
 
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .month-overview {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .sticky-panel {
@@ -1363,6 +1526,57 @@ button:disabled {
 
   .stats-grid {
     gap: 0.45rem;
+  }
+
+  .month-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .month-overview > div {
+    padding: 0.5rem;
+    border-radius: 14px;
+  }
+
+  .month-overview strong {
+    font-size: 0.9rem;
+  }
+
+  .month-weekdays,
+  .month-grid {
+    gap: 0.22rem;
+  }
+
+  .month-weekdays {
+    font-size: 0.62rem;
+  }
+
+  .month-day-card {
+    min-height: 76px;
+    padding: 0.34rem;
+    border-radius: 12px;
+  }
+
+  .month-day-number {
+    font-size: 0.76rem;
+  }
+
+  .month-capacity-row {
+    grid-template-columns: 12px minmax(0, 1fr);
+    min-height: 20px;
+    padding: 0.12rem 0.18rem;
+    font-size: 0.62rem;
+  }
+
+  .month-capacity-row em {
+    display: none;
+  }
+
+  .month-problem-badge {
+    inset: 0.26rem 0.26rem auto auto;
+    min-width: 16px;
+    height: 16px;
+    font-size: 0.58rem;
   }
 
   .stat-card {

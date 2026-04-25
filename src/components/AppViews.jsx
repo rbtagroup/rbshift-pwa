@@ -25,6 +25,33 @@ function addDays(date, days) {
   return nextDate
 }
 
+function addMonths(date, months) {
+  const nextDate = new Date(date)
+  nextDate.setMonth(nextDate.getMonth() + months)
+  return nextDate
+}
+
+function getMonthStart(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function getCoverageCapacity(date) {
+  const day = date.getDay()
+  if (day === 0) return { day: 1, night: 1 }
+  if (day === 5 || day === 6) return { day: 2, night: 5 }
+  return { day: 2, night: 2 }
+}
+
+function getCoverageBucket(shift) {
+  return shift.shift_type === 'N' ? 'night' : 'day'
+}
+
+function getCoverageTone(assigned, open, capacity) {
+  if (assigned >= capacity) return 'success'
+  if (assigned + open >= capacity) return 'warning'
+  return 'danger'
+}
+
 function getLocalDateTimeInputValue(value) {
   const date = value instanceof Date ? value : new Date(value)
   const year = date.getFullYear()
@@ -659,6 +686,7 @@ export function DriverView({
 export function DispatcherView(props) {
   const {
     activeTab,
+    setActiveTab,
     shifts,
     todayShifts,
     problems,
@@ -749,6 +777,18 @@ export function DispatcherView(props) {
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
         onTestPush={onTestPush}
+      />
+    )
+  }
+
+  if (activeTab === 'month') {
+    return (
+      <MonthlyCoverageSection
+        createDefaultShiftForm={createDefaultShiftForm}
+        onEditShift={onEditShift}
+        setActiveTab={setActiveTab}
+        setShiftForm={setShiftForm}
+        shifts={shifts}
       />
     )
   }
@@ -943,6 +983,183 @@ function DashboardSection({ shifts, stats, thisWeekShifts, todayShifts, vehicles
                 <p>{item.count} směn · {item.hours.toFixed(1)} h · noční {item.nights}×</p>
               </div>
               <StatusPill>{item.weekends} víkendy</StatusPill>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function MonthlyCoverageSection({ createDefaultShiftForm, onEditShift, setActiveTab, setShiftForm, shifts }) {
+  const [monthCursor, setMonthCursor] = useState(() => getMonthStart(new Date()))
+  const [selectedDayKey, setSelectedDayKey] = useState(() => getLocalDateKey(new Date()))
+  const monthStart = getMonthStart(monthCursor)
+  const gridStart = new Date(monthStart)
+  const isoDay = gridStart.getDay() || 7
+  gridStart.setDate(gridStart.getDate() - isoDay + 1)
+  const monthLabel = new Intl.DateTimeFormat('cs-CZ', { month: 'long', year: 'numeric' }).format(monthStart)
+  const monthKey = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`
+  const monthShifts = shifts.filter((shift) => getLocalDateKey(shift.start_at).startsWith(monthKey))
+  const activeMonthShifts = monthShifts.filter((shift) => shift.status !== 'cancelled')
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = addDays(gridStart, index)
+    const key = getLocalDateKey(date)
+    const capacity = getCoverageCapacity(date)
+    const dayShifts = shifts
+      .filter((shift) => shift.status !== 'cancelled' && getLocalDateKey(shift.start_at) === key)
+      .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
+    const dayBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'day')
+    const nightBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'night')
+    const dayAssigned = dayBucketShifts.filter((shift) => shift.driver_id).length
+    const nightAssigned = nightBucketShifts.filter((shift) => shift.driver_id).length
+    const dayOpen = dayBucketShifts.filter((shift) => !shift.driver_id).length
+    const nightOpen = nightBucketShifts.filter((shift) => !shift.driver_id).length
+    const problems = dayShifts.filter((shift) => (
+      !shift.vehicle_id ||
+      shift.driver_response === 'pending' ||
+      shift.driver_response === 'declined' ||
+      shift.status === 'replacement_needed'
+    ))
+
+    return {
+      key,
+      date,
+      capacity,
+      inMonth: date.getMonth() === monthStart.getMonth(),
+      day: {
+        assigned: dayAssigned,
+        open: dayOpen,
+        capacity: capacity.day,
+        tone: getCoverageTone(dayAssigned, dayOpen, capacity.day),
+      },
+      night: {
+        assigned: nightAssigned,
+        open: nightOpen,
+        capacity: capacity.night,
+        tone: getCoverageTone(nightAssigned, nightOpen, capacity.night),
+      },
+      problems,
+      shifts: dayShifts,
+    }
+  })
+  const selectedDay = days.find((day) => day.key === selectedDayKey) ?? days.find((day) => day.inMonth) ?? days[0]
+  const inMonthDays = days.filter((day) => day.inMonth)
+  const fullyCoveredDays = inMonthDays.filter((day) => day.day.assigned >= day.day.capacity && day.night.assigned >= day.night.capacity).length
+  const missingSlots = inMonthDays.reduce((acc, day) => (
+    acc +
+    Math.max(0, day.day.capacity - day.day.assigned - day.day.open) +
+    Math.max(0, day.night.capacity - day.night.assigned - day.night.open)
+  ), 0)
+  const openSlots = activeMonthShifts.filter((shift) => !shift.driver_id).length
+  const problemCount = inMonthDays.reduce((acc, day) => acc + day.problems.length, 0)
+
+  const prepareShiftForSelectedDay = () => {
+    const start = new Date(`${selectedDay.key}T06:00:00`)
+    const end = new Date(`${selectedDay.key}T14:00:00`)
+    setShiftForm({
+      ...createDefaultShiftForm(),
+      start_at: getLocalDateTimeInputValue(start),
+      end_at: getLocalDateTimeInputValue(end),
+      shift_type: 'R',
+    })
+    setActiveTab('shifts')
+  }
+
+  return (
+    <div className="month-planner">
+      <section className="panel month-calendar-panel">
+        <div className="panel-header wrap">
+          <div>
+            <h3>Měsíční obsazenost</h3>
+            <p className="muted">Jedna provozní mapa pro denní/noční kapacity, volné směny a problémové stavy.</p>
+          </div>
+          <div className="button-row wrap">
+            <button className="ghost-button" type="button" onClick={() => setMonthCursor((current) => getMonthStart(addMonths(current, -1)))}>Předchozí</button>
+            <button className="ghost-button active-pill" type="button" onClick={() => setMonthCursor(getMonthStart(new Date()))}>Dnes</button>
+            <button className="ghost-button" type="button" onClick={() => setMonthCursor((current) => getMonthStart(addMonths(current, 1)))}>Další</button>
+          </div>
+        </div>
+
+        <div className="month-overview">
+          <div>
+            <span className="muted">Měsíc</span>
+            <strong>{monthLabel}</strong>
+          </div>
+          <div>
+            <span className="muted">Plně obsazeno</span>
+            <strong>{fullyCoveredDays}/{inMonthDays.length}</strong>
+          </div>
+          <div>
+            <span className="muted">Chybí míst</span>
+            <strong>{missingSlots}</strong>
+          </div>
+          <div>
+            <span className="muted">Volné směny</span>
+            <strong>{openSlots}</strong>
+          </div>
+          <div>
+            <span className="muted">Problémy</span>
+            <strong>{problemCount}</strong>
+          </div>
+        </div>
+
+        <div className="month-weekdays" aria-hidden="true">
+          {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'].map((label) => <span key={label}>{label}</span>)}
+        </div>
+
+        <div className="month-grid">
+          {days.map((day) => (
+            <button
+              className={cx('month-day-card', !day.inMonth && 'outside', selectedDay.key === day.key && 'selected', day.problems.length > 0 && 'has-problems')}
+              key={day.key}
+              type="button"
+              onClick={() => setSelectedDayKey(day.key)}
+            >
+              <span className="month-day-number">{day.date.getDate()}</span>
+              <span className={cx('month-capacity-row', `month-${day.day.tone}`)}>
+                <small>D</small>
+                <strong>{day.day.assigned}/{day.day.capacity}</strong>
+                {day.day.open ? <em>+{day.day.open}</em> : null}
+              </span>
+              <span className={cx('month-capacity-row', `month-${day.night.tone}`)}>
+                <small>N</small>
+                <strong>{day.night.assigned}/{day.night.capacity}</strong>
+                {day.night.open ? <em>+{day.night.open}</em> : null}
+              </span>
+              {day.problems.length ? <span className="month-problem-badge">{day.problems.length}</span> : null}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel month-detail-panel">
+        <div className="panel-header wrap">
+          <div>
+            <h3>{formatDate(selectedDay.date, { weekday: 'long' })}</h3>
+            <p className="muted">{selectedDay.day.assigned}/{selectedDay.day.capacity} den · {selectedDay.night.assigned}/{selectedDay.night.capacity} noc</p>
+          </div>
+          <button className="primary-button" type="button" onClick={prepareShiftForSelectedDay}>Přidat směnu</button>
+        </div>
+
+        <div className="month-detail-status">
+          <StatusPill tone={selectedDay.day.tone}>Denní {selectedDay.day.assigned}/{selectedDay.day.capacity}{selectedDay.day.open ? ` +${selectedDay.day.open}` : ''}</StatusPill>
+          <StatusPill tone={selectedDay.night.tone}>Noční {selectedDay.night.assigned}/{selectedDay.night.capacity}{selectedDay.night.open ? ` +${selectedDay.night.open}` : ''}</StatusPill>
+          {selectedDay.problems.length ? <StatusPill tone="danger">{selectedDay.problems.length} k řešení</StatusPill> : <StatusPill tone="success">Bez problémů</StatusPill>}
+        </div>
+
+        <div className="stack-md">
+          {selectedDay.shifts.length === 0 ? <EmptyState text="V tento den zatím nejsou žádné směny." /> : selectedDay.shifts.map((shift) => (
+            <div className="list-card compact month-shift-row" key={shift.id}>
+              <div>
+                <strong>{formatTime(shift.start_at)}–{formatTime(shift.end_at)} · {SHIFT_TYPE_LABEL[shift.shift_type]}</strong>
+                <p>{shift.driver?.display_name ?? 'Volná směna'} · {shift.vehicle?.plate ?? 'Bez auta'}</p>
+                <p className="muted">{shift.note || 'Bez poznámky'}</p>
+              </div>
+              <div className="button-row wrap">
+                <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
+                <button className="ghost-button" type="button" onClick={() => onEditShift(shift)}>Otevřít</button>
+              </div>
             </div>
           ))}
         </div>
