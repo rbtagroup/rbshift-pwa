@@ -141,6 +141,17 @@ export function DriverView({
     const shiftKey = getLocalDateKey(shift.start_at)
     return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.driver_response === 'pending'
   }).length
+  const weekAcceptedCount = visibleShifts.filter((shift) => {
+    const shiftKey = getLocalDateKey(shift.start_at)
+    return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.driver_response === 'accepted'
+  }).length
+  const weekNightCount = visibleShifts.filter((shift) => {
+    const shiftKey = getLocalDateKey(shift.start_at)
+    return shiftKey >= todayKey && shiftKey <= weekEndKey && shift.shift_type === 'N'
+  }).length
+  const weekSummaryText = weekShiftCount
+    ? `${weekAcceptedCount} potvrzeno · ${weekPendingCount ? `${weekPendingCount} čeká` : 'vše vyřízené'} · ${weekNightCount} noční`
+    : 'Tento týden zatím nemáš naplánovanou směnu.'
   const todayDriverShifts = visibleShifts.filter((shift) => getLocalDateKey(shift.start_at) === todayKey)
   const nextPendingShift = visibleShifts.find((shift) => shift.driver_response === 'pending')
   const daySelectValue = shiftFilter === 'day'
@@ -365,7 +376,11 @@ export function DriverView({
           </div>
         ) : (
           <section className="panel">
-            <EmptyState text="Nemáš žádnou nejbližší směnu. Pokud chceš, mrkni na Volné směny." />
+            <EmptyState
+              actionLabel="Zobrazit volné směny"
+              onAction={() => onNotificationAction({ targetTab: 'open-shifts' })}
+              text="Nemáš žádnou nejbližší směnu. Pokud chceš, mrkni na volné směny."
+            />
           </section>
         )}
       </div>
@@ -481,6 +496,7 @@ export function DriverView({
           <span>{weekPendingCount ? `${weekPendingCount} čeká na potvrzení` : 'nic nečeká na potvrzení'}</span>
           <span>nejbližší: {upcomingShift ? `${formatDate(upcomingShift.start_at, { weekday: 'long' })} ${formatTime(upcomingShift.start_at)}` : 'žádná'}</span>
         </div>
+        <p className="driver-week-copy">{weekSummaryText}</p>
 
         <div className="driver-shift-controls">
           <div className="driver-week-strip" aria-label="Týdenní přehled směn">
@@ -539,8 +555,20 @@ export function DriverView({
         </div>
 
         <div className="stack-lg driver-timeline-list">
-          {visibleShifts.length === 0 ? <EmptyState text="Zatím nemáš žádné směny." /> : null}
-          {visibleShifts.length > 0 && groupedDriverShiftKeys.length === 0 ? <EmptyState text="Pro vybraný filtr tu není žádná směna." /> : null}
+          {visibleShifts.length === 0 ? (
+            <EmptyState
+              actionLabel="Zobrazit volné směny"
+              onAction={() => onNotificationAction({ targetTab: 'open-shifts' })}
+              text="Zatím nemáš žádné směny."
+            />
+          ) : null}
+          {visibleShifts.length > 0 && groupedDriverShiftKeys.length === 0 ? (
+            <EmptyState
+              actionLabel={shiftTimeline === 'history' ? undefined : 'Zobrazit volné směny'}
+              onAction={shiftTimeline === 'history' ? undefined : () => onNotificationAction({ targetTab: 'open-shifts' })}
+              text="Pro vybraný filtr tu není žádná směna."
+            />
+          ) : null}
           {groupedDriverShiftKeys.map((dayKey) => {
             const dayShifts = groupedDriverShifts[dayKey]
             const dayDate = new Date(`${dayKey}T12:00:00`)
@@ -1020,6 +1048,7 @@ function DriverTasksSection({
   visibleInboxNotifications,
 }) {
   const hasPrimaryTasks = notifications.length > 0 || replacementOffers.length > 0
+  const pushPreferenceEnabled = Boolean(notificationPreferences.push_enabled)
 
   return (
     <div className="stack-xl">
@@ -1123,6 +1152,14 @@ function DriverTasksSection({
 
       <details className="panel driver-preferences">
         <summary>Nastavení upozornění</summary>
+        <div className={cx('notification-health', pushPreferenceEnabled ? 'notification-health-on' : 'notification-health-off')}>
+          <strong>{pushPreferenceEnabled ? 'Push notifikace jsou v aplikaci zapnuté' : 'Push notifikace nejsou zapnuté'}</strong>
+          <p>
+            {pushPreferenceEnabled
+              ? 'Pro upozornění mimo otevřenou aplikaci musí být push povolený i v prohlížeči a aplikace musí být nainstalovaná.'
+              : 'Zapni push a povol ho v prohlížeči, aby řidič dostal upozornění i mimo otevřenou aplikaci.'}
+          </p>
+        </div>
         <div className="form-grid">
           <label className="checkbox-item">
             <input
@@ -1203,7 +1240,7 @@ function OpenShiftsSection({ applications, availability, busy, currentDriver, on
         </div>
       </div>
       <div className="open-shift-grid">
-        {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny." /> : openShifts.map((shift) => {
+        {openShifts.length === 0 ? <EmptyState text="Momentálně nejsou vypsané žádné volné směny. Jakmile dispečer uvolní směnu, objeví se tady a půjde se na ni přihlásit." /> : openShifts.map((shift) => {
           const application = applicationsByShiftId[shift.id]
           const suitability = getSuitability(shift)
           return (
@@ -1900,6 +1937,13 @@ function InfoRow({ label, value }) {
   )
 }
 
-function EmptyState({ text }) {
-  return <div className="empty-state">{text}</div>
+function EmptyState({ actionLabel, onAction, text }) {
+  return (
+    <div className="empty-state">
+      <p>{text}</p>
+      {actionLabel && onAction ? (
+        <button className="ghost-button" type="button" onClick={onAction}>{actionLabel}</button>
+      ) : null}
+    </div>
+  )
 }
