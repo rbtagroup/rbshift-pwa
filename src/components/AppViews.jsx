@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   AVAILABILITY_LABEL,
   RESPONSE_LABEL,
@@ -10,6 +10,7 @@ import {
   formatDateTime,
   formatTime,
 } from '../utils'
+import { StatusPill } from './StatusPill'
 
 function getLocalDateKey(value) {
   const date = value instanceof Date ? value : new Date(value)
@@ -994,55 +995,64 @@ function DashboardSection({ shifts, stats, thisWeekShifts, todayShifts, vehicles
 function MonthlyCoverageSection({ createDefaultShiftForm, onEditShift, setActiveTab, setShiftForm, shifts }) {
   const [monthCursor, setMonthCursor] = useState(() => getMonthStart(new Date()))
   const [selectedDayKey, setSelectedDayKey] = useState(() => getLocalDateKey(new Date()))
-  const monthStart = getMonthStart(monthCursor)
-  const gridStart = new Date(monthStart)
-  const isoDay = gridStart.getDay() || 7
-  gridStart.setDate(gridStart.getDate() - isoDay + 1)
-  const monthLabel = new Intl.DateTimeFormat('cs-CZ', { month: 'long', year: 'numeric' }).format(monthStart)
+  const monthStart = useMemo(() => getMonthStart(monthCursor), [monthCursor])
+  const monthLabel = useMemo(() => new Intl.DateTimeFormat('cs-CZ', { month: 'long', year: 'numeric' }).format(monthStart), [monthStart])
   const monthKey = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`
-  const monthShifts = shifts.filter((shift) => getLocalDateKey(shift.start_at).startsWith(monthKey))
-  const activeMonthShifts = monthShifts.filter((shift) => shift.status !== 'cancelled')
-  const days = Array.from({ length: 42 }, (_, index) => {
-    const date = addDays(gridStart, index)
-    const key = getLocalDateKey(date)
-    const capacity = getCoverageCapacity(date)
-    const dayShifts = shifts
-      .filter((shift) => shift.status !== 'cancelled' && getLocalDateKey(shift.start_at) === key)
-      .sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
-    const dayBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'day')
-    const nightBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'night')
-    const dayAssigned = dayBucketShifts.filter((shift) => shift.driver_id).length
-    const nightAssigned = nightBucketShifts.filter((shift) => shift.driver_id).length
-    const dayOpen = dayBucketShifts.filter((shift) => !shift.driver_id).length
-    const nightOpen = nightBucketShifts.filter((shift) => !shift.driver_id).length
-    const problems = dayShifts.filter((shift) => (
-      !shift.vehicle_id ||
-      shift.driver_response === 'pending' ||
-      shift.driver_response === 'declined' ||
-      shift.status === 'replacement_needed'
-    ))
+  const activeMonthShifts = useMemo(() => shifts.filter((shift) => (
+    shift.status !== 'cancelled' &&
+    getLocalDateKey(shift.start_at).startsWith(monthKey)
+  )), [monthKey, shifts])
+  const days = useMemo(() => {
+    const gridStart = new Date(monthStart)
+    const isoDay = gridStart.getDay() || 7
+    gridStart.setDate(gridStart.getDate() - isoDay + 1)
+    const shiftsByDay = shifts.reduce((acc, shift) => {
+      if (shift.status === 'cancelled') return acc
+      const key = getLocalDateKey(shift.start_at)
+      acc[key] = [...(acc[key] ?? []), shift]
+      return acc
+    }, {})
 
-    return {
-      key,
-      date,
-      capacity,
-      inMonth: date.getMonth() === monthStart.getMonth(),
-      day: {
-        assigned: dayAssigned,
-        open: dayOpen,
-        capacity: capacity.day,
-        tone: getCoverageTone(dayAssigned, dayOpen, capacity.day),
-      },
-      night: {
-        assigned: nightAssigned,
-        open: nightOpen,
-        capacity: capacity.night,
-        tone: getCoverageTone(nightAssigned, nightOpen, capacity.night),
-      },
-      problems,
-      shifts: dayShifts,
-    }
-  })
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = addDays(gridStart, index)
+      const key = getLocalDateKey(date)
+      const capacity = getCoverageCapacity(date)
+      const dayShifts = [...(shiftsByDay[key] ?? [])].sort((a, b) => new Date(a.start_at) - new Date(b.start_at))
+      const dayBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'day')
+      const nightBucketShifts = dayShifts.filter((shift) => getCoverageBucket(shift) === 'night')
+      const dayAssigned = dayBucketShifts.filter((shift) => shift.driver_id).length
+      const nightAssigned = nightBucketShifts.filter((shift) => shift.driver_id).length
+      const dayOpen = dayBucketShifts.filter((shift) => !shift.driver_id).length
+      const nightOpen = nightBucketShifts.filter((shift) => !shift.driver_id).length
+      const problems = dayShifts.filter((shift) => (
+        !shift.vehicle_id ||
+        shift.driver_response === 'pending' ||
+        shift.driver_response === 'declined' ||
+        shift.status === 'replacement_needed'
+      ))
+
+      return {
+        key,
+        date,
+        capacity,
+        inMonth: date.getMonth() === monthStart.getMonth(),
+        day: {
+          assigned: dayAssigned,
+          open: dayOpen,
+          capacity: capacity.day,
+          tone: getCoverageTone(dayAssigned, dayOpen, capacity.day),
+        },
+        night: {
+          assigned: nightAssigned,
+          open: nightOpen,
+          capacity: capacity.night,
+          tone: getCoverageTone(nightAssigned, nightOpen, capacity.night),
+        },
+        problems,
+        shifts: dayShifts,
+      }
+    })
+  }, [monthStart, shifts])
   const selectedDay = days.find((day) => day.key === selectedDayKey) ?? days.find((day) => day.inMonth) ?? days[0]
   const inMonthDays = days.filter((day) => day.inMonth)
   const fullyCoveredDays = inMonthDays.filter((day) => day.day.assigned >= day.day.capacity && day.night.assigned >= day.night.capacity).length
@@ -2129,10 +2139,6 @@ function ShiftListItem({ shift, compact = false }) {
       <StatusPill tone={shift.driver_response === 'accepted' ? 'success' : shift.driver_response === 'declined' ? 'danger' : 'warning'}>{RESPONSE_LABEL[shift.driver_response]}</StatusPill>
     </div>
   )
-}
-
-export function StatusPill({ children, tone = 'neutral' }) {
-  return <span className={cx('pill', `pill-${tone}`)}>{children}</span>
 }
 
 function StatCard({ label, value, tone = 'neutral' }) {

@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { ROLE_LABEL, cx } from './utils'
-import { DispatcherView, DriverView, StatusPill } from './components/AppViews'
 import { AuthScreen } from './components/AuthScreen'
+import { StatusPill } from './components/StatusPill'
 import { useShiftApp } from './hooks/useShiftApp'
+
+const DriverView = lazy(() => import('./components/AppViews').then((module) => ({ default: module.DriverView })))
+const DispatcherView = lazy(() => import('./components/AppViews').then((module) => ({ default: module.DispatcherView })))
 
 function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -259,110 +262,112 @@ function App() {
             </div>
           ) : null}
 
-          {profile.role === 'driver' ? (
-            <DriverView
-              activeTab={activeTab}
-              currentDriver={currentDriver}
-              dataLoading={dataLoading}
-              inboxNotifications={inboxNotifications}
-              myShiftApplications={myShiftApplications}
-              openShifts={openShifts}
-              visibleInboxNotifications={visibleInboxNotifications}
-              notifications={notifications}
-              notificationHistoryFilter={notificationHistoryFilter}
-              notificationPreferences={notificationPreferences}
-              onEnablePush={enablePushNotifications}
-              onNotificationAction={handleNotificationAction}
-              onNotificationHistoryFilterChange={setNotificationHistoryFilter}
-              onNotificationPreferenceSave={handleSaveNotificationPreferences}
-              onNotificationRead={markNotificationRead}
-              onTestPush={sendTestPushNotification}
-              onApplyOpenShift={handleApplyOpenShift}
-              onOfferShiftToDriver={handleOfferShiftToDriver}
-              onRejectHandoverRequest={handleRejectHandoverRequest}
-              upcomingShift={upcomingShift}
-              visibleShifts={visibleShifts}
-              drivers={drivers}
-              availability={availability}
-              onRespond={handleShiftResponse}
-              onTakeoverShift={handleTakeoverShift}
-              onAvailabilityEdit={openAvailabilityForEdit}
-              availabilityForm={availabilityForm}
-              setAvailabilityForm={setAvailabilityForm}
-              onSaveAvailability={handleSaveAvailability}
-              driversMap={driversMap}
-              vehiclesMap={vehiclesMap}
-              replacementOffers={replacementOffers}
-              pendingHandoverByShiftId={pendingHandoverByShiftId}
-              shiftHandoverRequests={shiftHandoverRequests}
-              busy={busy}
-            />
-          ) : (
-            <DispatcherView
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              shifts={enrichedShifts}
-              weeklyCoverage={weeklyCoverage}
-              shiftApplicationsByShiftId={shiftApplicationsByShiftId}
-              inboxNotifications={inboxNotifications}
-              visibleInboxNotifications={visibleInboxNotifications}
-              notifications={notifications}
-              notificationHistoryFilter={notificationHistoryFilter}
-              notificationPreferences={notificationPreferences}
-              onEnablePush={enablePushNotifications}
-              onNotificationAction={handleNotificationAction}
-              onNotificationHistoryFilterChange={setNotificationHistoryFilter}
-              onNotificationPreferenceSave={handleSaveNotificationPreferences}
-              onNotificationRead={markNotificationRead}
-              onTestPush={sendTestPushNotification}
-              onApproveShiftApplication={handleApproveShiftApplication}
-              todayShifts={todayShifts}
-              problems={problems}
-              stats={stats}
-              thisWeekShifts={thisWeekShifts}
-              onboardingItems={onboardingItems}
-              drivers={drivers}
-              driversMap={driversMap}
-              vehicles={vehicles}
-              availability={availability}
-              changeLog={changeLog}
-              filters={filters}
-              setFilters={setFilters}
-              calendarView={calendarView}
-              setCalendarView={setCalendarView}
-              dataLoading={dataLoading}
-              groupedCalendar={groupedCalendar}
-              shiftForm={shiftForm}
-              setShiftForm={setShiftForm}
-              onSaveShift={handleSaveShift}
-              onDeleteShift={handleDeleteShift}
-              onEditShift={openShiftForEdit}
-              availabilityForm={availabilityForm}
-              setAvailabilityForm={setAvailabilityForm}
-              onSaveAvailability={handleSaveAvailability}
-              onAvailabilityEdit={openAvailabilityForEdit}
-              vehicleForm={vehicleForm}
-              setVehicleForm={setVehicleForm}
-              onSaveVehicle={handleSaveVehicle}
-              onVehicleEdit={openVehicleForEdit}
-              profileForm={profileForm}
-              setProfileForm={setProfileForm}
-              onSaveProfile={handleSaveProfile}
-              onProfileEdit={openProfileForEdit}
-              onProfileDelete={handleDeleteProfile}
-              onProfileToggleActive={handleToggleProfileActive}
-              driverForm={driverForm}
-              setDriverForm={setDriverForm}
-              onSaveDriver={handleSaveDriver}
-              onDriverEdit={openDriverForEdit}
-              onDriverDelete={handleDeleteDriver}
-              onDriverToggleActive={handleToggleDriverActive}
-              onExportShifts={handleExportShifts}
-              profiles={profiles}
-              busy={busy}
-              createDefaultShiftForm={createDefaultShiftForm}
-            />
-          )}
+          <Suspense fallback={<div className="loader-card">Načítám prostředí…</div>}>
+            {profile.role === 'driver' ? (
+              <DriverView
+                activeTab={activeTab}
+                currentDriver={currentDriver}
+                dataLoading={dataLoading}
+                inboxNotifications={inboxNotifications}
+                myShiftApplications={myShiftApplications}
+                openShifts={openShifts}
+                visibleInboxNotifications={visibleInboxNotifications}
+                notifications={notifications}
+                notificationHistoryFilter={notificationHistoryFilter}
+                notificationPreferences={notificationPreferences}
+                onEnablePush={enablePushNotifications}
+                onNotificationAction={handleNotificationAction}
+                onNotificationHistoryFilterChange={setNotificationHistoryFilter}
+                onNotificationPreferenceSave={handleSaveNotificationPreferences}
+                onNotificationRead={markNotificationRead}
+                onTestPush={sendTestPushNotification}
+                onApplyOpenShift={handleApplyOpenShift}
+                onOfferShiftToDriver={handleOfferShiftToDriver}
+                onRejectHandoverRequest={handleRejectHandoverRequest}
+                upcomingShift={upcomingShift}
+                visibleShifts={visibleShifts}
+                drivers={drivers}
+                availability={availability}
+                onRespond={handleShiftResponse}
+                onTakeoverShift={handleTakeoverShift}
+                onAvailabilityEdit={openAvailabilityForEdit}
+                availabilityForm={availabilityForm}
+                setAvailabilityForm={setAvailabilityForm}
+                onSaveAvailability={handleSaveAvailability}
+                driversMap={driversMap}
+                vehiclesMap={vehiclesMap}
+                replacementOffers={replacementOffers}
+                pendingHandoverByShiftId={pendingHandoverByShiftId}
+                shiftHandoverRequests={shiftHandoverRequests}
+                busy={busy}
+              />
+            ) : (
+              <DispatcherView
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                shifts={enrichedShifts}
+                weeklyCoverage={weeklyCoverage}
+                shiftApplicationsByShiftId={shiftApplicationsByShiftId}
+                inboxNotifications={inboxNotifications}
+                visibleInboxNotifications={visibleInboxNotifications}
+                notifications={notifications}
+                notificationHistoryFilter={notificationHistoryFilter}
+                notificationPreferences={notificationPreferences}
+                onEnablePush={enablePushNotifications}
+                onNotificationAction={handleNotificationAction}
+                onNotificationHistoryFilterChange={setNotificationHistoryFilter}
+                onNotificationPreferenceSave={handleSaveNotificationPreferences}
+                onNotificationRead={markNotificationRead}
+                onTestPush={sendTestPushNotification}
+                onApproveShiftApplication={handleApproveShiftApplication}
+                todayShifts={todayShifts}
+                problems={problems}
+                stats={stats}
+                thisWeekShifts={thisWeekShifts}
+                onboardingItems={onboardingItems}
+                drivers={drivers}
+                driversMap={driversMap}
+                vehicles={vehicles}
+                availability={availability}
+                changeLog={changeLog}
+                filters={filters}
+                setFilters={setFilters}
+                calendarView={calendarView}
+                setCalendarView={setCalendarView}
+                dataLoading={dataLoading}
+                groupedCalendar={groupedCalendar}
+                shiftForm={shiftForm}
+                setShiftForm={setShiftForm}
+                onSaveShift={handleSaveShift}
+                onDeleteShift={handleDeleteShift}
+                onEditShift={openShiftForEdit}
+                availabilityForm={availabilityForm}
+                setAvailabilityForm={setAvailabilityForm}
+                onSaveAvailability={handleSaveAvailability}
+                onAvailabilityEdit={openAvailabilityForEdit}
+                vehicleForm={vehicleForm}
+                setVehicleForm={setVehicleForm}
+                onSaveVehicle={handleSaveVehicle}
+                onVehicleEdit={openVehicleForEdit}
+                profileForm={profileForm}
+                setProfileForm={setProfileForm}
+                onSaveProfile={handleSaveProfile}
+                onProfileEdit={openProfileForEdit}
+                onProfileDelete={handleDeleteProfile}
+                onProfileToggleActive={handleToggleProfileActive}
+                driverForm={driverForm}
+                setDriverForm={setDriverForm}
+                onSaveDriver={handleSaveDriver}
+                onDriverEdit={openDriverForEdit}
+                onDriverDelete={handleDeleteDriver}
+                onDriverToggleActive={handleToggleDriverActive}
+                onExportShifts={handleExportShifts}
+                profiles={profiles}
+                busy={busy}
+                createDefaultShiftForm={createDefaultShiftForm}
+              />
+            )}
+          </Suspense>
         </main>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { demoUsers } from '../demoData'
-import { StatusPill } from './AppViews'
+import { StatusPill } from './StatusPill'
 
 export function AuthScreen({
   busy,
