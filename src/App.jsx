@@ -4,7 +4,7 @@ import { AuthScreen } from './components/AuthScreen'
 import { StatusPill } from './components/StatusPill'
 import { useShiftApp } from './hooks/useShiftApp'
 
-const DriverView = lazy(() => import('./components/AppViews').then((module) => ({ default: module.DriverView })))
+const DriverView = lazy(() => import('./components/DriverView').then((module) => ({ default: module.DriverView })))
 const DispatcherView = lazy(() => import('./components/AppViews').then((module) => ({ default: module.DispatcherView })))
 
 function App() {
