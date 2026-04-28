@@ -50,6 +50,12 @@ button {
   cursor: pointer;
 }
 
+.build-badge {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 input, select, textarea {
   width: 100%;
   background: rgba(15, 23, 42, 0.85);

@@ -81,10 +81,23 @@ export function loadDemoState() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return emptyState
     const parsed = JSON.parse(raw)
-    return {
+    const merged = {
       ...emptyState,
       ...parsed,
     }
+    if ((parsed.demo_seed_version ?? 1) < emptyState.demo_seed_version) {
+      const hasOpenShift = (merged.shifts ?? []).some((shift) => (
+        !shift.driver_id &&
+        shift.status === 'planned' &&
+        new Date(shift.end_at).getTime() >= Date.now()
+      ))
+      const seedOpenShift = emptyState.shifts.find((shift) => shift.id === 'shift-open-1')
+      if (!hasOpenShift && seedOpenShift) {
+        merged.shifts = [seedOpenShift, ...(merged.shifts ?? [])]
+      }
+      merged.demo_seed_version = emptyState.demo_seed_version
+    }
+    return merged
   } catch {
     return emptyState
   }

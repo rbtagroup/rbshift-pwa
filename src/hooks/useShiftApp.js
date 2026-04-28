@@ -1039,10 +1039,22 @@ export function useShiftApp() {
 
   function resetForms() {
     setShiftForm(DEFAULT_SHIFT_FORM())
-    setAvailabilityForm(DEFAULT_AVAILABILITY_FORM())
+    setAvailabilityForm(getDefaultAvailabilityForm())
     setVehicleForm(DEFAULT_VEHICLE_FORM)
     setDriverForm(DEFAULT_DRIVER_FORM)
     setProfileForm(DEFAULT_PROFILE_FORM)
+  }
+
+  function getDefaultAvailabilityForm() {
+    const nextForm = DEFAULT_AVAILABILITY_FORM()
+    if (profile?.role === 'driver' && currentDriver) {
+      return {
+        ...nextForm,
+        driver_id: currentDriver.id,
+        availability_type: 'unavailable',
+      }
+    }
+    return nextForm
   }
 
   function validateShift(form) {
@@ -1118,6 +1130,11 @@ export function useShiftApp() {
       end_at: new Date(shiftForm.end_at).toISOString(),
       updated_by: profile?.id ?? null,
       updated_at: new Date().toISOString(),
+    }
+
+    if (!payload.driver_id) {
+      payload.status = 'planned'
+      payload.driver_response = 'pending'
     }
 
     const previous = shiftForm.id ? shifts.find((item) => item.id === shiftForm.id) : null
@@ -1621,7 +1638,9 @@ export function useShiftApp() {
     event.preventDefault()
     setBusy(true)
 
-    if (!availabilityForm.driver_id) {
+    const availabilityDriverId = availabilityForm.driver_id || (profile?.role === 'driver' ? currentDriver?.id : '')
+
+    if (!availabilityDriverId) {
       setFlash('error', 'Vyber řidiče.')
       setBusy(false)
       return
@@ -1638,7 +1657,7 @@ export function useShiftApp() {
     }
 
     const payload = {
-      driver_id: availabilityForm.driver_id,
+      driver_id: availabilityDriverId,
       availability_type: availabilityForm.availability_type,
       note: availabilityForm.note.trim(),
       from_date: new Date(availabilityForm.from_date).toISOString(),
@@ -1653,7 +1672,7 @@ export function useShiftApp() {
           : [{ ...payload, id: generateId('availability') }, ...current.availability],
       }))
       await appendLog({ entity_type: 'availability', entity_id: availabilityForm.id ?? 'new', action: availabilityForm.id ? 'updated' : 'created', old_data: null, new_data: payload, user_id: profile?.id ?? null })
-      setAvailabilityForm(DEFAULT_AVAILABILITY_FORM())
+      setAvailabilityForm(getDefaultAvailabilityForm())
       setFlash('success', 'Dostupnost byla uložena.')
       setBusy(false)
       return
@@ -1671,7 +1690,7 @@ export function useShiftApp() {
     }
     await appendLog({ entity_type: 'availability', entity_id: availabilityForm.id ?? 'new', action: availabilityForm.id ? 'updated' : 'created', old_data: null, new_data: payload, user_id: profile?.id ?? null })
     await fetchSupabaseData()
-    setAvailabilityForm(DEFAULT_AVAILABILITY_FORM())
+    setAvailabilityForm(getDefaultAvailabilityForm())
     setFlash('success', 'Dostupnost byla uložena.')
     setBusy(false)
   }

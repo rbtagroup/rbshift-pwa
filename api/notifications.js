@@ -815,7 +815,8 @@ async function applyForOpenShift(adminClient, requester, shiftId) {
 
   if (shiftError || !shift) throw new Error('Směna nebyla nalezena.')
   if (shift.driver_id) throw new Error('Tato směna už má přiřazeného řidiče.')
-  if (shift.status !== 'planned') throw new Error('Na tuto směnu se už nejde přihlásit.')
+  if (['cancelled', 'completed'].includes(shift.status)) throw new Error('Na tuto směnu se už nejde přihlásit.')
+  if (new Date(shift.end_at).getTime() < Date.now()) throw new Error('Na již proběhlou směnu se nejde přihlásit.')
 
   await validateDriverAvailabilityForShift(adminClient, currentDriver.id, shift)
 

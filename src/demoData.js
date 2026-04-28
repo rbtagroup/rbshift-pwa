@@ -166,6 +166,21 @@ export const demoShifts = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
+  {
+    id: 'shift-open-1',
+    driver_id: null,
+    vehicle_id: 'vehicle-1',
+    start_at: isoFor(3, 6, 0),
+    end_at: isoFor(3, 14, 0),
+    shift_type: 'R',
+    status: 'planned',
+    driver_response: 'pending',
+    note: 'Volná směna k přihlášení řidičem.',
+    created_by: 'profile-dispatcher',
+    updated_by: 'profile-dispatcher',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
 ]
 
 export const demoAvailability = [
@@ -273,6 +288,7 @@ export const demoUsers = [
 ]
 
 export const emptyState = {
+  demo_seed_version: 2,
   profiles: demoProfiles,
   drivers: demoDrivers,
   vehicles: demoVehicles,

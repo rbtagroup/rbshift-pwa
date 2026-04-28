@@ -8,6 +8,8 @@ import {
   formatDate,
   formatDateTime,
   formatTime,
+  overlaps,
+  toInputValue,
 } from '../utils'
 import { StatusPill } from './StatusPill'
 
@@ -69,6 +71,7 @@ export function DriverView({
   availability,
   onRespond,
   onTakeoverShift,
+  onAvailabilityEdit,
   availabilityForm,
   setAvailabilityForm,
   onSaveAvailability,
@@ -148,6 +151,22 @@ export function DriverView({
         ? 'week'
       : 'week'
 
+  const createDriverAvailabilityForm = () => {
+    const from = new Date()
+    from.setHours(0, 0, 0, 0)
+    const to = new Date(from)
+    to.setHours(23, 59, 0, 0)
+
+    return {
+      id: null,
+      driver_id: currentDriver.id,
+      availability_type: 'unavailable',
+      from_date: toInputValue(from),
+      to_date: toInputValue(to),
+      note: '',
+    }
+  }
+
   const applyAvailabilityPreset = (preset) => {
     const start = new Date()
     const end = new Date()
@@ -166,7 +185,8 @@ export function DriverView({
 
     if (preset === 'weekend') {
       const day = start.getDay()
-      const daysUntilSaturday = (6 - day + 7) % 7
+      const isWeekend = day === 0 || day === 6
+      const daysUntilSaturday = isWeekend ? (day === 6 ? 7 : 6) : (6 - day + 7) % 7
       start.setDate(start.getDate() + daysUntilSaturday)
       start.setHours(0, 0, 0, 0)
       end.setTime(start.getTime())
@@ -176,10 +196,12 @@ export function DriverView({
 
     setAvailabilityForm((current) => ({
       ...current,
+      id: null,
       driver_id: currentDriver.id,
       availability_type: 'unavailable',
-      from_date: getLocalDateTimeInputValue(start),
-      to_date: getLocalDateTimeInputValue(end),
+      from_date: toInputValue(start),
+      to_date: toInputValue(end),
+      note: '',
     }))
   }
 
@@ -417,7 +439,16 @@ export function DriverView({
     return (
       <div className="grid-2">
         <section className="panel">
-          <h3>Moje dostupnost</h3>
+          <div className="panel-header">
+            <div>
+              <h3>{availabilityForm.id ? 'Upravit dostupnost' : 'Moje dostupnost'}</h3>
+            </div>
+            {availabilityForm.id ? (
+              <button type="button" className="ghost-button" onClick={() => setAvailabilityForm(createDriverAvailabilityForm())}>
+                Nová blokace
+              </button>
+            ) : null}
+          </div>
           <form className="form-grid" onSubmit={onSaveAvailability}>
             <input type="hidden" value={availabilityForm.id ?? ''} />
             <div className="availability-presets full-width">
@@ -447,7 +478,7 @@ export function DriverView({
               Poznámka
               <textarea rows="3" value={availabilityForm.note} onChange={(event) => setAvailabilityForm((current) => ({ ...current, driver_id: currentDriver.id, note: event.target.value }))} />
             </label>
-            <button className="primary-button" disabled={busy}>Uložit dostupnost</button>
+            <button className="primary-button" disabled={busy}>{availabilityForm.id ? 'Uložit změnu' : 'Uložit dostupnost'}</button>
           </form>
         </section>
         <section className="panel">
@@ -460,6 +491,9 @@ export function DriverView({
                   <p>{formatDateTime(item.from_date)} — {formatDateTime(item.to_date)}</p>
                   <p className="muted">{item.note || 'Bez poznámky'}</p>
                 </div>
+                <button type="button" className="ghost-button" onClick={() => onAvailabilityEdit(item)}>
+                  Upravit
+                </button>
               </div>
             ))}
           </div>
@@ -828,8 +862,11 @@ function DriverTasksSection({
 }
 
 function OpenShiftsSection({ applications, availability, busy, currentDriver, onApplyOpenShift, onShowAvailability, openShifts, visibleShifts }) {
+  const activeApplicationStatuses = new Set(['pending', 'approved'])
   const applicationsByShiftId = applications.reduce((acc, item) => {
-    acc[item.shift_id] = item
+    if (activeApplicationStatuses.has(item.status)) {
+      acc[item.shift_id] = item
+    }
     return acc
   }, {})
 

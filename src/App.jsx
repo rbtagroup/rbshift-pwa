@@ -6,6 +6,7 @@ import { useShiftApp } from './hooks/useShiftApp'
 
 const DriverView = lazy(() => import('./components/DriverView').then((module) => ({ default: module.DriverView })))
 const DispatcherView = lazy(() => import('./components/AppViews').then((module) => ({ default: module.DispatcherView })))
+const APP_BUILD_LABEL = '2026-04-25.2'
 
 function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -180,6 +181,7 @@ function App() {
           <h1>RBSHIFT</h1>
         </div>
         <div className="topbar-actions">
+          <span className="build-badge">Build {APP_BUILD_LABEL}</span>
           <StatusPill tone={mode === 'demo' ? 'warning' : 'success'}>{mode === 'demo' ? 'Demo' : 'Supabase'}</StatusPill>
           <StatusPill>{ROLE_LABEL[profile.role]}</StatusPill>
           <button className="ghost-button" onClick={handleLogout}>Odhlásit</button>

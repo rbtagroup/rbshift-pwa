@@ -279,7 +279,8 @@ create policy "shifts_driver_select_open" on public.shifts
 for select using (
   public.current_role() = 'driver'
   and driver_id is null
-  and status = 'planned'
+  and status not in ('cancelled', 'completed')
+  and end_at >= now()
 );
 
 create policy "availability_staff_all" on public.driver_availability
