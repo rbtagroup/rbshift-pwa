@@ -1115,6 +1115,23 @@ export default async function handler(req, res) {
     return
   }
 
+  if (body.action === 'clear-read') {
+    const { data, error } = await adminClient
+      .from('notification_events')
+      .delete()
+      .eq('user_id', requester.id)
+      .not('read_at', 'is', null)
+      .select('id')
+
+    if (error) {
+      sendJson(res, 400, { error: error.message })
+      return
+    }
+
+    sendJson(res, 200, { ok: true, deleted: data?.length ?? 0 })
+    return
+  }
+
   if (body.action === 'takeover-shift') {
     const shiftId = body.shiftId?.trim()
     if (!shiftId) {

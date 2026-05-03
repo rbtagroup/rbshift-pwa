@@ -209,6 +209,7 @@ drop policy if exists "push_subscriptions_self_update" on public.push_subscripti
 drop policy if exists "push_subscriptions_self_delete" on public.push_subscriptions;
 drop policy if exists "notification_events_self_select" on public.notification_events;
 drop policy if exists "notification_events_self_update" on public.notification_events;
+drop policy if exists "notification_events_self_delete" on public.notification_events;
 
 create policy "profiles_self_or_staff_select" on public.profiles
 for select using (
@@ -350,6 +351,9 @@ for select using (user_id = auth.uid());
 create policy "notification_events_self_update" on public.notification_events
 for update using (user_id = auth.uid())
 with check (user_id = auth.uid());
+
+create policy "notification_events_self_delete" on public.notification_events
+for delete using (user_id = auth.uid());
 
 create index if not exists shifts_driver_time_idx on public.shifts(driver_id, start_at, end_at);
 create index if not exists shifts_vehicle_time_idx on public.shifts(vehicle_id, start_at, end_at);

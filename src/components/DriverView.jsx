@@ -57,6 +57,7 @@ export function DriverView({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  onReadNotificationsClear,
   onTestPush,
   myShiftApplications,
   openShifts,
@@ -409,6 +410,7 @@ export function DriverView({
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+        onReadNotificationsClear={onReadNotificationsClear}
         onTestPush={onTestPush}
         onRejectHandoverRequest={onRejectHandoverRequest}
         onTakeoverShift={onTakeoverShift}
@@ -689,6 +691,7 @@ function DriverTasksSection({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  onReadNotificationsClear,
   onRejectHandoverRequest,
   onTestPush,
   onTakeoverShift,
@@ -699,6 +702,7 @@ function DriverTasksSection({
 }) {
   const hasPrimaryTasks = notifications.length > 0 || replacementOffers.length > 0
   const pushPreferenceEnabled = Boolean(notificationPreferences.push_enabled)
+  const readInboxCount = inboxNotifications.filter((item) => item.read_at).length
 
   return (
     <div className="stack-xl">
@@ -783,6 +787,14 @@ function DriverTasksSection({
                 {label}
               </button>
             ))}
+            <button
+              className="ghost-button"
+              disabled={readInboxCount === 0}
+              onClick={onReadNotificationsClear}
+              type="button"
+            >
+              Smazat přečtené
+            </button>
           </div>
           {visibleInboxNotifications.length === 0 ? <EmptyState text="Pro vybraný filtr tu nejsou žádné doručené události." /> : visibleInboxNotifications.slice(0, 8).map((item) => (
             <div className="list-card compact" key={item.id}>

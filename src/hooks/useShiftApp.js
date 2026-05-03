@@ -718,6 +718,46 @@ export function useShiftApp() {
     }
   }
 
+  async function clearReadNotifications() {
+    const readCount = inboxNotifications.filter((item) => item.read_at).length
+    if (readCount === 0) {
+      setFlash('success', 'Žádné přečtené notifikace ke smazání.')
+      return
+    }
+
+    if (mode === 'demo') {
+      setDemoState((current) => ({
+        ...current,
+        notificationEvents: (current.notificationEvents ?? []).filter((item) => (
+          item.user_id !== profile?.id || !item.read_at
+        )),
+      }))
+      setFlash('success', 'Přečtené notifikace byly smazány.')
+      return
+    }
+
+    setBusy(true)
+    try {
+      const result = await callNotificationApi({ action: 'clear-read' })
+      if (!result.ok) {
+        throw new Error(result.error ?? 'Přečtené notifikace se nepodařilo smazat.')
+      }
+
+      setDemoState((current) => ({
+        ...current,
+        notificationEvents: (current.notificationEvents ?? []).filter((item) => (
+          item.user_id !== profile?.id || !item.read_at
+        )),
+      }))
+      await fetchSupabaseData(profile, { silent: true })
+      setFlash('success', `Přečtené notifikace byly smazány${result.deleted ? ` (${result.deleted})` : ''}.`)
+    } catch (clearError) {
+      setFlash('error', clearError.message || 'Přečtené notifikace se nepodařilo smazat.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function loadUserProfile(userId) {
     let lastError = null
 
@@ -2337,6 +2377,7 @@ export function useShiftApp() {
     error,
     filters,
     groupedCalendar,
+    clearReadNotifications,
     handleDeleteShift,
     handleDeleteDriver,
     handleDeleteProfile,

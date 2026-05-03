@@ -89,6 +89,7 @@ export function DispatcherView(props) {
     onNotificationHistoryFilterChange,
     onNotificationPreferenceSave,
     onNotificationRead,
+    onReadNotificationsClear,
     onTestPush,
     onApproveShiftApplication,
     drivers,
@@ -160,6 +161,7 @@ export function DispatcherView(props) {
         onNotificationHistoryFilterChange={onNotificationHistoryFilterChange}
         onNotificationPreferenceSave={onNotificationPreferenceSave}
         onNotificationRead={onNotificationRead}
+        onReadNotificationsClear={onReadNotificationsClear}
         onTestPush={onTestPush}
       />
     )
@@ -865,8 +867,11 @@ function NotificationsSection({
   onNotificationHistoryFilterChange,
   onNotificationPreferenceSave,
   onNotificationRead,
+  onReadNotificationsClear,
   onTestPush,
 }) {
+  const readInboxCount = inboxNotifications.filter((item) => item.read_at).length
+
   return (
     <div className="grid-2">
       <section className="panel">
@@ -966,6 +971,14 @@ function NotificationsSection({
                 {label}
               </button>
             ))}
+            <button
+              className="ghost-button"
+              disabled={readInboxCount === 0}
+              onClick={onReadNotificationsClear}
+              type="button"
+            >
+              Smazat přečtené
+            </button>
           </div>
         </div>
         <div className="stack-md">

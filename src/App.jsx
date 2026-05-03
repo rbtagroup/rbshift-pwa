@@ -17,6 +17,7 @@ function App() {
     busy,
     calendarView,
     changeLog,
+    clearReadNotifications,
     currentDriver,
     createDefaultShiftForm,
     dataLoading,
@@ -282,6 +283,7 @@ function App() {
                 onNotificationHistoryFilterChange={setNotificationHistoryFilter}
                 onNotificationPreferenceSave={handleSaveNotificationPreferences}
                 onNotificationRead={markNotificationRead}
+                onReadNotificationsClear={clearReadNotifications}
                 onTestPush={sendTestPushNotification}
                 onApplyOpenShift={handleApplyOpenShift}
                 onOfferShiftToDriver={handleOfferShiftToDriver}
@@ -320,6 +322,7 @@ function App() {
                 onNotificationHistoryFilterChange={setNotificationHistoryFilter}
                 onNotificationPreferenceSave={handleSaveNotificationPreferences}
                 onNotificationRead={markNotificationRead}
+                onReadNotificationsClear={clearReadNotifications}
                 onTestPush={sendTestPushNotification}
                 onApproveShiftApplication={handleApproveShiftApplication}
                 todayShifts={todayShifts}
